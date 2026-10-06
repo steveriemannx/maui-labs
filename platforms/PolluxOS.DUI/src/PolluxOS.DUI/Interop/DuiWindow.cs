@@ -110,14 +110,6 @@ public sealed class DuiWindow : IDisposable
     }
 
     /// <summary>
-    /// Area of the window that the app's layout must keep clear of, in the same units as
-    /// <see cref="TryGetClientSize"/> (on macOS this is the title bar with its traffic
-    /// lights, which floats above a full-size content view).
-    /// </summary>
-    public bool TryGetContentInsets(out int top, out int left, out int bottom, out int right)
-        => DuiNative.dui_shim_window_get_content_insets(_handle, out top, out left, out bottom, out right) != 0;
-
-    /// <summary>
     /// Resizes the window's client area through the toolkit (macOS: AppKit), which is what
     /// triggers the size notification and lets the host re-lay out. Returns true when the
     /// request was accepted.

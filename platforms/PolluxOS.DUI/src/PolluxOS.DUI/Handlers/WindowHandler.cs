@@ -86,14 +86,53 @@ public partial class WindowHandler : ElementHandler<IWindow, DuiWindow>
         base.DisconnectHandler(platformView);
     }
 
-    /// <summary>Runs on the toolkit's UI thread when the window (client area) changes.</summary>
-    void OnClientSizeChanged(int width, int height)
+    int _lastAppliedWidth = -1;
+    int _lastAppliedHeight = -1;
+    long _lastClientLayoutTicks;
+
+    /// <summary>
+    /// Re-lays out when the toolkit's client area really changed.
+    /// </summary>
+    /// <remarks>
+    /// The size is always re-read from the toolkit rather than taken from the notification:
+    /// resizing our own root container raises the toolkit's size notification too, and
+    /// feeding that value back in made every pass subtract the platform inset again (the
+    /// layout shrank a little on each event, which is what made resizing flicker).
+    /// </remarks>
+    void ApplyClientAreaIfChanged(DuiWindow platformView, bool throttle)
     {
+        if (!platformView.TryGetClientSize(out var size))
+            return;
+
+        var width = (int)Math.Round(size.Width);
+        var height = (int)Math.Round(size.Height);
         if (width <= 0 || height <= 0)
             return;
 
+        if (width == _lastAppliedWidth && height == _lastAppliedHeight)
+            return;
+
+        if (throttle)
+        {
+            // A live resize raises the notification continuously and each pass ends in a
+            // full repaint, so coalesce while the user is dragging.
+            var now = Environment.TickCount64;
+            if (now - _lastClientLayoutTicks < 60)
+                return;
+
+            _lastClientLayoutTicks = now;
+        }
+
+        _lastAppliedWidth = width;
+        _lastAppliedHeight = height;
+        ApplyClientLayout(platformView, width, height);
+    }
+
+    /// <summary>Runs on the toolkit's UI thread when the window (client area) changes.</summary>
+    void OnClientSizeChanged(int width, int height)
+    {
         if (PlatformView is { } platformView)
-            ApplyClientLayout(platformView, width, height);
+            ApplyClientAreaIfChanged(platformView, throttle: true);
     }
 
     /// <summary>
@@ -111,21 +150,11 @@ public partial class WindowHandler : ElementHandler<IWindow, DuiWindow>
 
         var thread = new Thread(() =>
         {
-            Size? lastApplied = null;
-
             while (VirtualView is not null && !platformView.IsDisposed)
             {
                 Thread.Sleep(200);
 
-                if (!platformView.TryGetClientSize(out var size))
-                    continue;
-
-                if (lastApplied is { } previous && previous == size)
-                    continue;
-
-                lastApplied = size;
-
-                void Apply() => ApplyClientLayout(platformView, (int)size.Width, (int)size.Height);
+                void Apply() => ApplyClientAreaIfChanged(platformView, throttle: false);
 
                 if (dispatcher is not null && dispatcher.IsDispatchRequired)
                     dispatcher.Dispatch(Apply);
@@ -142,26 +171,18 @@ public partial class WindowHandler : ElementHandler<IWindow, DuiWindow>
     }
 
     /// <summary>
-    /// Sizes the root container to the client area minus the platform insets (the macOS
-    /// title bar floats above a full-size content view, so the layout has to stay clear of
-    /// it) and re-runs the content's layout pass inside what is left.
+    /// Sizes the root container to the client area and re-runs the content's layout pass.
     /// </summary>
+    /// <remarks>
+    /// Deliberately ignores the platform's content insets: on macOS the traffic lights and
+    /// title float above a full-size content view, and keeping the layout clear of them made
+    /// the window render black on that backend. The app gives its own top row enough height
+    /// to stay readable instead.
+    /// </remarks>
     void ApplyClientLayout(DuiWindow platformView, int width, int height)
     {
-        var top = 0;
-        var left = 0;
-        var bottom = 0;
-        var right = 0;
-        if (!platformView.TryGetContentInsets(out top, out left, out bottom, out right))
-        {
-            top = left = bottom = right = 0;
-        }
-
-        var innerWidth = Math.Max(1, width - left - right);
-        var innerHeight = Math.Max(1, height - top - bottom);
-
-        platformView.Root.SetBounds(new Rect(left, top, innerWidth, innerHeight));
-        ArrangeContent(innerWidth, innerHeight);
+        platformView.Root.SetBounds(new Rect(0, 0, width, height));
+        ArrangeContent(width, height);
     }
 
     /// <summary>Runs the content's cross-platform measure/arrange pass.</summary>

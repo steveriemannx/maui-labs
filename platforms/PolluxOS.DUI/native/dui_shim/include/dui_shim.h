@@ -128,6 +128,8 @@ DUI_SHIM_EXPORT void dui_shim_window_set_shadow(dui_shim_window* window, int32_t
  *  pointer. */
 DUI_SHIM_EXPORT int32_t dui_shim_window_set_client_size(dui_shim_window* window, int32_t width, int32_t height);
 
+DUI_SHIM_EXPORT int32_t dui_shim_window_set_client_size(dui_shim_window* window, int32_t width, int32_t height);
+
 /** Area of the window the host must keep clear of (e.g. the macOS title bar with its
  *  traffic lights). Values are in the same units as dui_shim_window_get_client_size().
  *  @return 1 on success, 0 when the platform reports no insets. */

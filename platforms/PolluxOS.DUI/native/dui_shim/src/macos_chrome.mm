@@ -23,6 +23,15 @@ NSWindow* FindWindowByTitle(const char* title)
 {
     NSString* wanted = title != nullptr ? [NSString stringWithUTF8String:title] : nil;
 
+    // Prefer the window whose content view is dui's own view: the title is set late by dui
+    // and matching on it proved unreliable.
+    for (NSWindow* window in [NSApp windows]) {
+        NSString* viewClass = NSStringFromClass([[window contentView] class]);
+        if ([viewClass containsString:@"DuI"] || [viewClass containsString:@"Dui"]) {
+            return window;
+        }
+    }
+
     for (NSWindow* window in [NSApp windows]) {
         if (wanted != nil && [[window title] isEqualToString:wanted]) {
             return window;
@@ -66,7 +75,8 @@ void ApplySystemChrome(NSWindow* window, NSString* title)
     NSView* contentView = window.contentView;
     if (contentView != nil) {
         for (NSView* subview in contentView.subviews) {
-            subview.frame = contentView.bounds;
+            // Mask only: assigning frame here would run before AppKit has given the window
+            // its real size and would freeze dui's view at a degenerate one.
             subview.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         }
     }
@@ -135,62 +145,6 @@ extern "C" void dui_shim_macos_show_system_chrome(void* nsWindow, const char* ti
     }
 }
 
-extern "C" int dui_shim_macos_content_insets(void* nsWindow, int* top, int* left, int* bottom, int* right,
-                                            int* viewHeight)
-{
-    if (nsWindow == nullptr) {
-        return 0;
-    }
-
-    NSWindow* window = (__bridge NSWindow*)nsWindow;
-    __block int result = 0;
-    void (^work)(void) = ^{
-        NSView* contentView = window.contentView;
-        if (contentView == nil) {
-            return;
-        }
-
-        // Standard way to get the title bar height: the difference between the window frame
-        // and the content rect belonging to it. contentLayoutRect proved unreliable for
-        // dui's windows (it can come back degenerate), and the content view covers the whole
-        // window because dui uses FullSizeContentView, so the buttons float over it.
-        const NSRect frame = window.frame;
-        const NSRect contentRect = [window contentRectForFrameRect:frame];
-        const NSRect viewBounds = contentView.bounds;
-
-        const CGFloat titleBar = NSHeight(frame) - NSHeight(contentRect);
-        const CGFloat leftInset = 0;
-        const CGFloat rightInset = 0;
-        const CGFloat bottomInset = 0;
-
-        if (top != nullptr) {
-            *top = (int)lround(titleBar > 0 ? titleBar : 0);
-        }
-        if (left != nullptr) {
-            *left = (int)lround(leftInset > 0 ? leftInset : 0);
-        }
-        if (bottom != nullptr) {
-            *bottom = (int)lround(bottomInset > 0 ? bottomInset : 0);
-        }
-        if (right != nullptr) {
-            *right = (int)lround(rightInset > 0 ? rightInset : 0);
-        }
-        if (viewHeight != nullptr) {
-            *viewHeight = (int)lround(NSHeight(viewBounds));
-        }
-
-        result = 1;
-    };
-
-    if ([NSThread isMainThread]) {
-        work();
-    } else {
-        dispatch_sync(dispatch_get_main_queue(), work);
-    }
-
-    return result;
-}
-
 extern "C" int dui_shim_macos_set_content_size(void* nsWindow, int width, int height)
 {
     if (nsWindow == nullptr || width <= 0 || height <= 0) {
@@ -208,20 +162,9 @@ extern "C" int dui_shim_macos_set_content_size(void* nsWindow, int width, int he
 
         // Resize every view in the content view tree to the new bounds: dui's own view does
         // not follow the window by itself.
-        // dui's own view is created without resizing behaviour, so nudge it (and anything
-        // it nests) to the window's new bounds.
-        NSView* contentView = window.contentView;
-        void (^fit)(NSView*) = ^(NSView* view) {
-            view.frame = contentView.bounds;
-            for (NSView* child in view.subviews) {
-                fit(child);
-            }
-        };
-        if (contentView != nil && contentView.subviews.count > 0) {
-            for (NSView* subview in contentView.subviews) {
-                fit(subview);
-            }
-        }
+        // No per-step view frame forcing here: resizing every view on each live-resize
+        // event makes dui redraw mid-drag and flickers. The autoresizing mask set by
+        // ApplySystemChrome makes the view follow the window instead.
         result = 1;
     };
 

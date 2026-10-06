@@ -31,9 +31,10 @@ public class CalculatorPage : ContentPage
         _display = new Label
         {
             Text = "0",
-            FontSize = 40,
+            FontSize = 44,
             TextColor = s_textColor,
             HorizontalTextAlignment = TextAlignment.End,
+            VerticalTextAlignment = TextAlignment.Center,
             AutomationId = "DisplayLabel",
         };
 
@@ -45,7 +46,9 @@ public class CalculatorPage : ContentPage
             BackgroundColor = s_background,
         };
 
-        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        // A tall display row: on macOS the traffic lights float over the top of the window,
+        // so the digits need vertical room of their own.
+        layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(120) });
         for (var i = 0; i < 4; i++)
             layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Star });
 
