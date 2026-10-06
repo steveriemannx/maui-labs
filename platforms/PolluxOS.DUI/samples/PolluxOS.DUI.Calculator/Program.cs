@@ -78,6 +78,20 @@ try
                 Console.WriteLine($"pointertest: display = '{page.DisplayText}' (expected 15)");
             }
 
+            if (args.Any(a => string.Equals(a, "resizetest", StringComparison.OrdinalIgnoreCase)))
+            {
+                // The host follows the window's client area; resize and check that the
+                // layout followed (on backends that honour a programmatic resize).
+                Thread.Sleep(TimeSpan.FromSeconds(2));
+                Console.WriteLine($"resizetest: before root='{duiWindow.Root.GetBounds()}' client={(duiWindow.TryGetClientSize(out var c0) ? c0.ToString() : "?")}");
+                duiWindow.SetSize(600, 700);
+                Thread.Sleep(TimeSpan.FromSeconds(2));
+                Console.WriteLine($"resizetest: after root='{duiWindow.Root.GetBounds()}' client={(duiWindow.TryGetClientSize(out var c1) ? c1.ToString() : "?")}");
+                foreach (var id in new[] { "Btn7", "BtnEquals" })
+                    if (page.TryGetButtonBounds(id, out var bounds))
+                        Console.WriteLine($"resizetest: {id} at {bounds}");
+            }
+
             if (selfTest)
             {
                 // Drive the buttons through DUI's own click notification (the path a

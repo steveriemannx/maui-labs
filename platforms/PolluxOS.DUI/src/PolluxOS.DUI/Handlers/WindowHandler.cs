@@ -73,7 +73,28 @@ public partial class WindowHandler : ElementHandler<IWindow, DuiWindow>
         var height = VirtualView.Height > 0 ? VirtualView.Height : 600;
         platformView.Root.SetBounds(new Rect(0, 0, width, height));
         ArrangeContent(width, height);
+
+        // Immediate re-layout on the toolkit's size notification, plus the poll below as a
+        // safety net for backends that do not raise it.
+        platformView.EnableClientSizeNotifications();
+        platformView.ClientSizeChanged += OnClientSizeChanged;
         WatchClientSize(platformView);
+    }
+
+    protected override void DisconnectHandler(DuiWindow platformView)
+    {
+        platformView.ClientSizeChanged -= OnClientSizeChanged;
+        base.DisconnectHandler(platformView);
+    }
+
+    /// <summary>Runs on the toolkit's UI thread when the window (client area) changes.</summary>
+    void OnClientSizeChanged(int width, int height)
+    {
+        if (width <= 0 || height <= 0)
+            return;
+
+        PlatformView?.Root.SetBounds(new Rect(0, 0, width, height));
+        ArrangeContent(width, height);
     }
 
     /// <summary>

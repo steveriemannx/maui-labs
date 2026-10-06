@@ -76,6 +76,11 @@ internal static partial class DuiNative
     [LibraryImport(LibraryName)]
     internal static partial int dui_shim_window_simulate_click(nint window, int x, int y);
 
+    /// <summary>Subscribes to client-area changes (callback runs on the toolkit's UI
+    /// thread); pass zero to unsubscribe.</summary>
+    [LibraryImport(LibraryName)]
+    internal static partial void dui_shim_window_set_size_handler(nint window, nint callback, nint userData);
+
     [LibraryImport(LibraryName)]
     internal static partial nint dui_shim_window_root(nint window);
 

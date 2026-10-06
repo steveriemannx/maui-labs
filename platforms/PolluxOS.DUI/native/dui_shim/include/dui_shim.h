@@ -49,6 +49,10 @@ typedef void (*dui_shim_event_cb)(void* user_data, dui_shim_widget* widget, int3
  *  affinity, which is what a MAUI dispatcher needs (see dui_shim_set_idle_handler). */
 typedef void (*dui_shim_idle_cb)(void* user_data);
 
+/** Window client-area callback: invoked on the toolkit's UI thread whenever the window
+ *  size changes (user resize, compositor configure). */
+typedef void (*dui_shim_size_cb)(void* user_data, int32_t width, int32_t height);
+
 /* ------------------------------------------------------------------ runtime */
 
 /** Start the toolkit: loads resources from `resource_root_utf8` (directory holding
@@ -104,6 +108,10 @@ DUI_SHIM_EXPORT void dui_shim_window_set_size(dui_shim_window* window, int32_t w
  *  backends (Wayland) size the surface themselves and ignore a requested resize.
  *  @return 1 on success, 0 if the size is not known yet (e.g. before dui_shim_run). */
 DUI_SHIM_EXPORT int32_t dui_shim_window_get_client_size(dui_shim_window* window, int32_t* width, int32_t* height);
+
+/** Subscribes to client-area changes. The callback runs on the UI thread; call with a
+ *  NULL callback to unsubscribe. */
+DUI_SHIM_EXPORT void dui_shim_window_set_size_handler(dui_shim_window* window, dui_shim_size_cb callback, void* user_data);
 DUI_SHIM_EXPORT void dui_shim_window_get_bounds(dui_shim_window* window, double* x_dip, double* y_dip, double* width_dip, double* height_dip);
 
 /** Feeds a left-button click at (x, y) in window coordinates into the toolkit, i.e. the

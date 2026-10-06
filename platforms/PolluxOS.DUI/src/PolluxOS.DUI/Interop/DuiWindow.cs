@@ -76,6 +76,32 @@ public sealed class DuiWindow : IDisposable
         return DuiNative.dui_shim_window_simulate_click(_handle, x, y) != 0;
     }
 
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    delegate void DuiSizeCallback(nint userData, int width, int height);
+
+    DuiSizeCallback? _sizeCallback;
+
+    /// <summary>Raised when the toolkit reports a new client area, on its UI thread.</summary>
+    public event Action<int, int>? ClientSizeChanged;
+
+    /// <summary>
+    /// Subscribes to the toolkit's window-size notification (user resize, compositor
+    /// configure). Idempotent; the delegate is rooted for the lifetime of the window.
+    /// </summary>
+    public void EnableClientSizeNotifications()
+    {
+        ThrowIfDisposed();
+
+        if (_sizeCallback is not null)
+            return;
+
+        _sizeCallback = (_, width, height) => ClientSizeChanged?.Invoke(width, height);
+        DuiNative.dui_shim_window_set_size_handler(
+            _handle,
+            Marshal.GetFunctionPointerForDelegate(_sizeCallback),
+            0);
+    }
+
     /// <summary>True once the window has been disposed (closed and released).</summary>
     public bool IsDisposed => _handle == 0;
 

@@ -195,6 +195,10 @@ struct dui_shim_window
     void* handler_user_data = nullptr;
     dui_shim_widget root;
     std::vector<dui_shim_widget*> owned_widgets;
+
+    /// Host hook for client-area changes (see dui_shim_window_set_size_handler).
+    dui_shim_size_cb size_cb = nullptr;
+    void* size_user = nullptr;
 };
 
 namespace {
@@ -284,6 +288,23 @@ private:
 // requested size the *client* area, so the host's layout matches the window exactly;
 // `SetWindowSize()` would fold DUI's shadow corner into it (the host then draws its tree
 // inside a larger decorated surface, which reads as a window inside a window).
+ui::UiSize UsableClientSize(dui_shim_window* window)
+{
+    ui::UiRect rc;
+    window->window->GetClientRect(rc);
+
+    int32_t width = rc.Width();
+    int32_t height = rc.Height();
+    if (window->root.control != nullptr)
+    {
+        const ui::UiRect rootPos = window->root.control->GetPos();
+        width -= rootPos.left * 2;
+        height -= rootPos.top * 2;
+    }
+
+    return ui::UiSize(width > 0 ? width : 0, height > 0 ? height : 0);
+}
+
 void ApplyClientSize(ui::Window* window, int width, int height)
 {
     if (window == nullptr || width <= 0 || height <= 0)
@@ -326,6 +347,18 @@ void DuiHost::OnInit()
 
         window->PostQuitMsgWhenClosed(true);
         handle->window = window;
+
+        // Size changes (user resize, compositor configure) are forwarded to the host so it
+        // can re-lay out, instead of keeping whatever size the app started with.
+        window->AttachWindowSizeMsg([handle](const ui::EventArgs&) {
+            if (handle->size_cb != nullptr)
+            {
+                const ui::UiSize size = UsableClientSize(handle);
+                if (size.cx > 0 && size.cy > 0)
+                    handle->size_cb(handle->size_user, size.cx, size.cy);
+            }
+            return true;
+        });
 
         // WindowCreateParam carries no size, so apply the requested one explicitly:
         // without this DUI falls back to its skin/default size (800x600), which is why a
@@ -732,6 +765,10 @@ void dui_shim_window_set_title(dui_shim_window* window, const char* title_utf8)
     DUI_SHIM_GUARD_END()
 }
 
+// Usable client area: the window surface minus the decoration inset the host's container
+// is attached in (WindowBase::GetShadowCorner is protected, but the toolkit has already
+// laid the container out at that inset, so its position is the inset).
+
 int32_t dui_shim_window_get_client_size(dui_shim_window* window, int32_t* width, int32_t* height)
 {
     if (window == nullptr || window->window == nullptr)
@@ -743,22 +780,9 @@ int32_t dui_shim_window_get_client_size(dui_shim_window* window, int32_t* width,
     int32_t client_width = 0;
     int32_t client_height = 0;
     const bool read = RunOnUiThreadSync([&]() {
-        ui::UiRect rc;
-        window->window->GetClientRect(rc);
-
-        client_width = rc.Width();
-        client_height = rc.Height();
-
-        // The reported rect is the window surface. The host's container sits inside the
-        // decoration/shadow corner (WindowBase::GetShadowCorner is protected, but the
-        // toolkit has already laid the container out at that inset), so subtract it —
-        // otherwise the host overflows the window by the shadow margin.
-        if (window->root.control != nullptr)
-        {
-            const ui::UiRect rootPos = window->root.control->GetPos();
-            client_width -= rootPos.left * 2;
-            client_height -= rootPos.top * 2;
-        }
+        const ui::UiSize size = UsableClientSize(window);
+        client_width = size.cx;
+        client_height = size.cy;
     });
 
     if (width != nullptr)
@@ -1256,6 +1280,22 @@ int32_t dui_shim_window_simulate_click(dui_shim_window* window, int32_t x, int32
 
     return 1;
     DUI_SHIM_GUARD_END(0)
+}
+
+void dui_shim_window_set_size_handler(dui_shim_window* window, dui_shim_size_cb callback, void* user_data)
+{
+    DUI_SHIM_GUARD_BEGIN
+    if (window == nullptr)
+    {
+        SetError("dui: null window");
+        return;
+    }
+
+    OnUiThread([window, callback, user_data]() {
+        window->size_cb = callback;
+        window->size_user = user_data;
+    });
+    DUI_SHIM_GUARD_END()
 }
 
 int32_t dui_shim_widget_activate(dui_shim_widget* widget)
