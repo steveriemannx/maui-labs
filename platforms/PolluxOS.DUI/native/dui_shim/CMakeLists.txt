@@ -26,6 +26,26 @@ if(APPLE)
                  "(DUI must be built with the same target — scripts/build-dui-macos.sh pins it)")
 endif()
 
+# DUI's exported target carries pkg-config imported targets on its link interface
+# (e.g. PkgConfig::WAYLAND_CLIENT for the Wayland backend, X11/Xext for X11) but the
+# installed duiConfig.cmake does not create them, so find_package(dui) fails with
+# "the target was not found". Recreate them here when pkg-config knows the module.
+if(UNIX AND NOT APPLE)
+  find_package(PkgConfig QUIET)
+  if(PkgConfig_FOUND)
+    foreach(_dui_pkg "WAYLAND_CLIENT;wayland-client" "X11;x11" "XEXT;xext")
+      list(GET _dui_pkg 0 _dui_target_suffix)
+      list(GET _dui_pkg 1 _dui_module)
+      if(NOT TARGET PkgConfig::${_dui_target_suffix})
+        pkg_check_modules(${_dui_target_suffix} QUIET IMPORTED_TARGET ${_dui_module})
+        if(TARGET PkgConfig::${_dui_target_suffix})
+          message(STATUS "dui_shim: recreated PkgConfig::${_dui_target_suffix} (${_dui_module}) for dui::dui")
+        endif()
+      endif()
+    endforeach()
+  endif()
+endif()
+
 find_package(dui CONFIG REQUIRED)
 
 if(APPLE)
