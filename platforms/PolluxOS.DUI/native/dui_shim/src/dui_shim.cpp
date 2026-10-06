@@ -291,6 +291,14 @@ private:
 // requested size the *client* area, so the host's layout matches the window exactly;
 // `SetWindowSize()` would fold DUI's shadow corner into it (the host then draws its tree
 // inside a larger decorated surface, which reads as a window inside a window).
+#if defined(__APPLE__)
+// Implemented in macos_chrome.mm: dui hides the AppKit title bar and the traffic lights
+// for windows that draw their own caption, so the host restores them.
+extern "C" void* dui_shim_macos_find_window(const char* title);
+extern "C" void dui_shim_macos_show_system_chrome(void* nsWindow, const char* title);
+extern "C" int dui_shim_macos_describe_chrome(void* nsWindow, int* styleMask, int* buttonsHidden, int* titleVisible);
+#endif
+
 ui::UiSize UsableClientSize(dui_shim_window* window)
 {
     ui::UiRect rc;
@@ -356,6 +364,24 @@ void DuiHost::OnInit()
         // also what makes AppKit give the window its title bar and traffic lights.
         window->SetUseDefaultShadowAttached(false);
         window->SetShadowAttached(handle->shadow_attached);
+
+#if defined(__APPLE__)
+        // Restore the macOS title bar + traffic lights (see macos_chrome.mm).
+        if (void* nsWindow = dui_shim_macos_find_window(handle->title.c_str()))
+        {
+            dui_shim_macos_show_system_chrome(nsWindow, handle->title.c_str());
+
+            int styleMask = 0;
+            int buttonsHidden = 0;
+            int titleVisible = 0;
+            if (dui_shim_macos_describe_chrome(nsWindow, &styleMask, &buttonsHidden, &titleVisible) != 0)
+            {
+                Trace(std::string("macOS chrome: styleMask=") + std::to_string(styleMask)
+                      + " trafficLightsHidden=" + (buttonsHidden ? "1" : "0")
+                      + " titleVisible=" + (titleVisible ? "1" : "0"));
+            }
+        }
+#endif
 
         window->PostQuitMsgWhenClosed(true);
         handle->window = window;
