@@ -77,10 +77,10 @@ public partial class WindowHandler : ElementHandler<IWindow, DuiWindow>
     }
 
     /// <summary>
-    /// Re-lays out the content to the window's real client area once the toolkit's message
-    /// loop is running. Needed because some backends (Wayland) size the surface themselves
-    /// and ignore a requested resize — without this the page would sit in one corner of a
-    /// window that is larger than the size the app asked for.
+    /// Follows the window's real client area: it re-lays out the content once the loop is
+    /// running, and again whenever the toolkit reports a different size (the user resizing
+    /// the window, or a backend that sizes the surface itself such as Wayland). Without
+    /// this, content would stay at whatever size the app asked for.
     /// </summary>
     void WatchClientSize(DuiWindow platformView)
     {
@@ -91,12 +91,19 @@ public partial class WindowHandler : ElementHandler<IWindow, DuiWindow>
 
         var thread = new Thread(() =>
         {
-            for (var attempt = 0; attempt < 60; attempt++)
+            Size? lastApplied = null;
+
+            while (VirtualView is not null && !platformView.IsDisposed)
             {
-                Thread.Sleep(50);
+                Thread.Sleep(200);
 
                 if (!platformView.TryGetClientSize(out var size))
                     continue;
+
+                if (lastApplied is { } previous && previous == size)
+                    continue;
+
+                lastApplied = size;
 
                 void Apply()
                 {
@@ -108,8 +115,6 @@ public partial class WindowHandler : ElementHandler<IWindow, DuiWindow>
                     dispatcher.Dispatch(Apply);
                 else
                     Apply();
-
-                return;
             }
         })
         {

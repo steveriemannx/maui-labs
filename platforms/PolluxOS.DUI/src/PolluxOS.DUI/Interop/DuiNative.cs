@@ -121,6 +121,11 @@ internal static partial class DuiNative
     [LibraryImport(LibraryName)]
     internal static partial void dui_shim_widget_set_event_handler(nint widget, int eventId, nint callback, nint userData);
 
+    /// <summary>Fires the control's click notification the way a real pointer click does
+    /// (DUI's <c>Button::Activate</c>). Returns 1 when the request was queued.</summary>
+    [LibraryImport(LibraryName)]
+    internal static partial int dui_shim_widget_activate(nint widget);
+
     [LibraryImport(LibraryName)]
     internal static partial void dui_shim_widget_invalidate(nint widget);
 

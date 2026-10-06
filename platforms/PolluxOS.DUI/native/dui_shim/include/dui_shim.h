@@ -169,6 +169,11 @@ DUI_SHIM_EXPORT int32_t dui_shim_widget_measure(dui_shim_widget* widget, double 
 /** Click/text events for this widget. Replaces any previous handler for `event_id`. */
 DUI_SHIM_EXPORT void dui_shim_widget_set_event_handler(dui_shim_widget* widget, int32_t event_id, dui_shim_event_cb callback, void* user_data);
 
+/** Fires the control's click notification as if the user had activated it (DUI's
+ *  Button::Activate). Returns 1 when the request was queued. Used by tests and by hosts
+ *  that need to drive the UI without a pointer. */
+DUI_SHIM_EXPORT int32_t dui_shim_widget_activate(dui_shim_widget* widget);
+
 /** Force a repaint of the widget (and its ancestors as needed). */
 DUI_SHIM_EXPORT void dui_shim_widget_invalidate(dui_shim_widget* widget);
 

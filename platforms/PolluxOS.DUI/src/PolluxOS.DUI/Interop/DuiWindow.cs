@@ -65,6 +65,9 @@ public sealed class DuiWindow : IDisposable
         }
     }
 
+    /// <summary>True once the window has been disposed (closed and released).</summary>
+    public bool IsDisposed => _handle == 0;
+
     public void Show() => DuiNative.dui_shim_window_show(_handle, 1);
 
     /// <summary>

@@ -1029,6 +1029,11 @@ dui_shim_widget* dui_shim_widget_create(dui_shim_widget* parent, const char* cla
         }
 
         Trace(std::string("  AddItem ok, box items now=") + std::to_string(box->GetItemCount()));
+
+        // Interactive controls must accept the pointer explicitly: the toolkit's defaults
+        // differ per control class, and a control with an explicit rectangle should be
+        // hit-testable regardless.
+        control->SetMouseEnabled(true);
         widget->control = control;
     });
 
@@ -1212,11 +1217,43 @@ void dui_shim_widget_set_event_handler(dui_shim_widget* widget, int32_t event_id
             return;
         }
         control->AttachClick([handle, event_id, callback, user_data](const ui::EventArgs&) {
+            Trace("click: control '" + handle->name + "' -> managed callback");
             callback(user_data, handle, event_id);
             return true;
         });
     });
     DUI_SHIM_GUARD_END()
+}
+
+int32_t dui_shim_widget_activate(dui_shim_widget* widget)
+{
+    DUI_SHIM_GUARD_BEGIN
+    if (widget == nullptr)
+    {
+        SetError("dui: null widget");
+        return 0;
+    }
+
+    OnUiThread([widget]() {
+        if (widget->control == nullptr)
+        {
+            SetAsyncError("dui: activate: the widget has no control yet");
+            return;
+        }
+
+        // Buttons turn Activate() into kEventClick, i.e. exactly what a real pointer click
+        // produces (ButtonTemplate::Activate).
+        if (auto* button = dynamic_cast<ui::Button*>(widget->control))
+        {
+            button->Activate(nullptr);
+            return;
+        }
+
+        widget->control->SendEvent(ui::kEventClick);
+    });
+
+    return 1;
+    DUI_SHIM_GUARD_END(0)
 }
 
 void dui_shim_widget_invalidate(dui_shim_widget* widget)

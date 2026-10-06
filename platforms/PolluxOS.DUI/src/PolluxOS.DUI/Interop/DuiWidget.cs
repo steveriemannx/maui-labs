@@ -113,6 +113,16 @@ public class DuiWidget : IDisposable
     }
 
     /// <summary>Attaches (or clears) the click handler for this control.</summary>
+    /// <summary>
+    /// Activates the control (a button click) exactly as the toolkit would on a pointer
+    /// click, so a host or test can drive the UI without input devices.
+    /// </summary>
+    public bool Activate()
+    {
+        ThrowIfDisposed();
+        return DuiNative.dui_shim_widget_activate(Handle) != 0;
+    }
+
     public void SetClickHandler(Action? handler)
     {
         ThrowIfDisposed();

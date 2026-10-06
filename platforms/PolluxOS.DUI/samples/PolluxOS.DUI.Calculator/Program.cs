@@ -27,7 +27,8 @@ try
     ((IElementHandler)applicationHandler).SetMauiContext(context);
     ((IElementHandler)applicationHandler).SetVirtualView(application);
 
-    var window = new Microsoft.Maui.Controls.Window(new CalculatorPage())
+    var page = new CalculatorPage();
+    var window = new Microsoft.Maui.Controls.Window(page)
     {
         Title = "PolluxOS Calculator",
         Width = 380,
@@ -46,14 +47,34 @@ try
     Console.WriteLine("window_show: requested");
 
     var probeSeconds = args.Length > 1 && int.TryParse(args[1], out var parsed) ? parsed : 0;
-    if (probeSeconds > 0)
+    var selfTest = args.Any(argument => string.Equals(argument, "selftest", StringComparison.OrdinalIgnoreCase));
+
+    if (selfTest || probeSeconds > 0)
     {
         var probe = new Thread(() =>
         {
-            Thread.Sleep(TimeSpan.FromSeconds(probeSeconds));
-            Console.WriteLine("Widget tree:");
-            Console.WriteLine(duiWindow.TryDumpXml() ?? "(dump unavailable)");
-            duiWindow.Close();
+            if (selfTest)
+            {
+                // Drive the buttons through DUI's own click notification (the path a
+                // pointer click takes) and report the display, so the native → managed
+                // wiring can be verified without input devices: 7 + 8 = 15.
+                Thread.Sleep(TimeSpan.FromSeconds(2));
+                foreach (var id in new[] { "Btn7", "BtnAdd", "Btn8", "BtnEquals" })
+                {
+                    page.PressOnPlatform(id);
+                    Thread.Sleep(250);
+                }
+
+                Console.WriteLine($"selftest: display = '{page.DisplayText}' (expected 15)");
+            }
+
+            if (probeSeconds > 0)
+            {
+                Thread.Sleep(TimeSpan.FromSeconds(probeSeconds));
+                Console.WriteLine("Widget tree:");
+                Console.WriteLine(duiWindow.TryDumpXml() ?? "(dump unavailable)");
+                duiWindow.Close();
+            }
         })
         {
             IsBackground = true,
