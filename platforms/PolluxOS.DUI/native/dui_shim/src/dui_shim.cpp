@@ -313,6 +313,12 @@ void DuiHost::OnInit()
         window->PostQuitMsgWhenClosed(true);
         handle->window = window;
 
+        // WindowCreateParam carries no size, so apply the requested one explicitly:
+        // without this DUI falls back to its skin/default size (800x600), which is why a
+        // 380x560 calculator window came up at the wrong size with its layout in a corner.
+        if (handle->width > 0 && handle->height > 0)
+            window->SetWindowSize(handle->width, handle->height);
+
         // A pure-code window has no root container until one is attached: the XML
         // path creates it through WindowBuilder, while the code path expects the host
         // to call AttachBox (see the sequence documented in include/dui/Core/Window.h).
