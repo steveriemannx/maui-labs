@@ -341,17 +341,21 @@ void DuiHost::OnInit()
             window->InitSkin(handle->skin_folder, handle->skin_file);
         }
 
-        // The decoration decides the native window style: on macOS the system chrome
-        // (title bar + traffic lights) only exists for a shadow-attached window, while on
-        // Wayland it only insets the host's content, so hosts choose per platform.
-        window->SetShadowAttached(handle->shadow_attached);
-
         if (!window->CreateWnd(nullptr, ui::WindowCreateParam(handle->title, true)))
         {
             SetAsyncError("dui: WindowImplBase::CreateWnd failed for window '" + handle->name + "'");
             // Do not delete: the toolkit owns window lifetime.
             continue;
         }
+
+        // The decoration must be chosen *after* CreateWnd: Window::PreInitWindow (run
+        // inside it) is what creates the shadow object, and SetShadowAttached before that
+        // is a no-op. Window::AttachBox wraps the root in a ShadowBox only while the shadow
+        // is attached, so setting it here is what decides whether the host's content fills
+        // the window or sits inside a decoration frame. On macOS the attached shadow is
+        // also what makes AppKit give the window its title bar and traffic lights.
+        window->SetUseDefaultShadowAttached(false);
+        window->SetShadowAttached(handle->shadow_attached);
 
         window->PostQuitMsgWhenClosed(true);
         handle->window = window;
