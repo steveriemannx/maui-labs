@@ -106,6 +106,11 @@ DUI_SHIM_EXPORT void dui_shim_window_set_size(dui_shim_window* window, int32_t w
 DUI_SHIM_EXPORT int32_t dui_shim_window_get_client_size(dui_shim_window* window, int32_t* width, int32_t* height);
 DUI_SHIM_EXPORT void dui_shim_window_get_bounds(dui_shim_window* window, double* x_dip, double* y_dip, double* width_dip, double* height_dip);
 
+/** Feeds a left-button click at (x, y) in window coordinates into the toolkit, i.e. the
+ *  exact path a compositor-delivered pointer click takes (hit testing included). Used to
+ *  verify input handling without a pointer. Returns 1 when the click was queued. */
+DUI_SHIM_EXPORT int32_t dui_shim_window_simulate_click(dui_shim_window* window, int32_t x, int32_t y);
+
 /** Root container widget of the window (owned by the window; do not destroy).
  *  Valid before the message loop starts: the handle exists immediately and resolves
  *  to the real container once the toolkit has created the window, so a host can

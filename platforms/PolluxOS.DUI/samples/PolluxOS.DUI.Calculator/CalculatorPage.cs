@@ -136,6 +136,20 @@ public class CalculatorPage : ContentPage
         return button.Handler?.PlatformView is DuiWidget widget && widget.Activate();
     }
 
+    /// <summary>Bounds of a button's DUI control, in window coordinates.</summary>
+    public bool TryGetButtonBounds(string automationId, out Rect bounds)
+    {
+        if (_buttons.TryGetValue(automationId, out var button)
+            && button.Handler?.PlatformView is DuiWidget widget)
+        {
+            bounds = widget.GetBounds();
+            return true;
+        }
+
+        bounds = Rect.Zero;
+        return false;
+    }
+
     void AppendDigit(char digit)
     {
         var current = _startNewEntry ? string.Empty : _display.Text ?? string.Empty;

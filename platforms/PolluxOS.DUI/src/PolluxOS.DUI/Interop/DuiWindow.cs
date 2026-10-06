@@ -65,6 +65,17 @@ public sealed class DuiWindow : IDisposable
         }
     }
 
+    /// <summary>
+    /// Clicks at (x, y) in window coordinates by feeding the toolkit the same notification
+    /// its native backends send for a compositor-delivered pointer click. Lets a host or
+    /// test verify input handling (including hit testing) without a pointing device.
+    /// </summary>
+    public bool SimulateClick(int x, int y)
+    {
+        ThrowIfDisposed();
+        return DuiNative.dui_shim_window_simulate_click(_handle, x, y) != 0;
+    }
+
     /// <summary>True once the window has been disposed (closed and released).</summary>
     public bool IsDisposed => _handle == 0;
 

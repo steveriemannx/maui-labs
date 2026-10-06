@@ -53,6 +53,31 @@ try
     {
         var probe = new Thread(() =>
         {
+            if (args.Any(a => string.Equals(a, "pointertest", StringComparison.OrdinalIgnoreCase)))
+            {
+                // Clicks through the toolkit's own hit testing (the path a real pointer
+                // click takes), at the centre of each button in turn: 7 + 8 = 15.
+                Thread.Sleep(TimeSpan.FromSeconds(2));
+                foreach (var id in new[] { "Btn7", "BtnAdd", "Btn8", "BtnEquals" })
+                {
+                    if (page.TryGetButtonBounds(id, out var bounds))
+                    {
+                        var x = (int)Math.Round(bounds.X + (bounds.Width / 2));
+                        var y = (int)Math.Round(bounds.Y + (bounds.Height / 2));
+                        Console.WriteLine($"pointertest: click {id} at {x},{y} (bounds {bounds})");
+                        duiWindow.SimulateClick(x, y);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"pointertest: no bounds for {id}");
+                    }
+
+                    Thread.Sleep(300);
+                }
+
+                Console.WriteLine($"pointertest: display = '{page.DisplayText}' (expected 15)");
+            }
+
             if (selfTest)
             {
                 // Drive the buttons through DUI's own click notification (the path a

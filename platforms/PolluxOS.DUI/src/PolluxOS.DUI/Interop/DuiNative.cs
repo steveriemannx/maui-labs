@@ -71,6 +71,11 @@ internal static partial class DuiNative
     [LibraryImport(LibraryName)]
     internal static partial void dui_shim_window_get_bounds(nint window, out double x, out double y, out double width, out double height);
 
+    /// <summary>Feeds a left click at (x, y) in window coordinates into the toolkit
+    /// (hit testing included). Returns 1 when the click was queued.</summary>
+    [LibraryImport(LibraryName)]
+    internal static partial int dui_shim_window_simulate_click(nint window, int x, int y);
+
     [LibraryImport(LibraryName)]
     internal static partial nint dui_shim_window_root(nint window);
 

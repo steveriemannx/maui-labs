@@ -1225,6 +1225,39 @@ void dui_shim_widget_set_event_handler(dui_shim_widget* widget, int32_t event_id
     DUI_SHIM_GUARD_END()
 }
 
+int32_t dui_shim_window_simulate_click(dui_shim_window* window, int32_t x, int32_t y)
+{
+    DUI_SHIM_GUARD_BEGIN
+    if (window == nullptr || window->window == nullptr)
+    {
+        SetError("dui: null window");
+        return 0;
+    }
+
+    OnUiThread([window, x, y]() {
+        // WindowBase implements INativeWindow; these are the calls the Wayland (and other)
+        // backends make when the compositor delivers a pointer click, so this exercises
+        // the toolkit's hit testing and control-notification path.
+        auto* owner = static_cast<ui::INativeWindow*>(window->window);
+        if (owner == nullptr)
+        {
+            SetAsyncError("dui: simulate_click: window has no native owner");
+            return;
+        }
+
+        const ui::UiPoint pt(x, y);
+        bool handled = false;
+        owner->OnNativeMouseMoveMsg(pt, 0, false, ui::NativeMsg(0, 0, 0), handled);
+        owner->OnNativeMouseLButtonDownMsg(pt, 0, ui::NativeMsg(0, 0, 0), handled);
+        owner->OnNativeMouseLButtonUpMsg(pt, 0, ui::NativeMsg(0, 0, 0), handled);
+        Trace("simulate_click at " + std::to_string(x) + "," + std::to_string(y)
+              + " (down handled=" + (handled ? "1" : "0") + ")");
+    });
+
+    return 1;
+    DUI_SHIM_GUARD_END(0)
+}
+
 int32_t dui_shim_widget_activate(dui_shim_widget* widget)
 {
     DUI_SHIM_GUARD_BEGIN
