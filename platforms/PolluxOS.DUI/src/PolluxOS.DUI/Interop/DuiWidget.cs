@@ -179,7 +179,7 @@ public sealed class DuiBox : DuiWidget
     {
     }
 
-    public static DuiBox Create(DuiWidget parent, string controlClass = DuiControlClass.Box, string? name = null)
+    public static new DuiBox Create(DuiWidget parent, string controlClass = DuiControlClass.Box, string? name = null)
     {
         var handle = DuiNative.OrThrow(
             DuiNative.dui_shim_widget_create(parent.Handle, controlClass, name),

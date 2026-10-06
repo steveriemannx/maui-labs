@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- LibraryImport-generated P/Invoke helpers are emitted as unsafe code. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>PolluxOS.DUI.Interop.Smoke</AssemblyName>
+    <RootNamespace>PolluxOS.DUI.Interop.Smoke</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <!-- The bridge is loaded by name; building without it is valid, running is not. -->
+    <PolluxOSDuiNativeDir Condition="'$(PolluxOSDuiNativeDir)' == ''">$(MSBuildThisFileDirectory)../../artifacts/native/macos</PolluxOSDuiNativeDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Graphics" Version="10.0.41" />
+  </ItemGroup>
+
+  <!-- Compile the shipping interop layer: this test exercises the real code, not a copy. -->
+  <ItemGroup>
+    <Compile Include="../../src/PolluxOS.DUI/Interop/*.cs" LinkBase="Interop" />
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(PolluxOSDuiNativeDir)')">
+    <!-- macOS/Windows (.dylib/.dll) and ELF platforms (.so): the same test runs on the
+         polluxos box against libdui_shim.so. -->
+    <None Include="$(PolluxOSDuiNativeDir)/*.dylib" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
+    <None Include="$(PolluxOSDuiNativeDir)/*.so" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
+    <None Include="$(PolluxOSDuiNativeDir)/*.dll" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>
