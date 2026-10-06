@@ -199,6 +199,9 @@ struct dui_shim_window
     /// Host hook for client-area changes (see dui_shim_window_set_size_handler).
     dui_shim_size_cb size_cb = nullptr;
     void* size_user = nullptr;
+
+    /// Whether the toolkit should attach its window shadow/decoration (default: yes).
+    bool shadow_attached = true;
 };
 
 namespace {
@@ -337,6 +340,11 @@ void DuiHost::OnInit()
             // XML mode: the window parses resources/themes/<theme>/<skin>/<file>.xml
             window->InitSkin(handle->skin_folder, handle->skin_file);
         }
+
+        // The decoration decides the native window style: on macOS the system chrome
+        // (title bar + traffic lights) only exists for a shadow-attached window, while on
+        // Wayland it only insets the host's content, so hosts choose per platform.
+        window->SetShadowAttached(handle->shadow_attached);
 
         if (!window->CreateWnd(nullptr, ui::WindowCreateParam(handle->title, true)))
         {
@@ -1280,6 +1288,20 @@ int32_t dui_shim_window_simulate_click(dui_shim_window* window, int32_t x, int32
 
     return 1;
     DUI_SHIM_GUARD_END(0)
+}
+
+void dui_shim_window_set_shadow(dui_shim_window* window, int32_t attached)
+{
+    DUI_SHIM_GUARD_BEGIN
+    if (window == nullptr)
+    {
+        SetError("dui: null window");
+        return;
+    }
+
+    // The windows are created when the message loop starts, so the flag is read there.
+    window->shadow_attached = attached != 0;
+    DUI_SHIM_GUARD_END()
 }
 
 void dui_shim_window_set_size_handler(dui_shim_window* window, dui_shim_size_cb callback, void* user_data)

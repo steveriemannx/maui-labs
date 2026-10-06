@@ -112,6 +112,15 @@ DUI_SHIM_EXPORT int32_t dui_shim_window_get_client_size(dui_shim_window* window,
 /** Subscribes to client-area changes. The callback runs on the UI thread; call with a
  *  NULL callback to unsubscribe. */
 DUI_SHIM_EXPORT void dui_shim_window_set_size_handler(dui_shim_window* window, dui_shim_size_cb callback, void* user_data);
+
+/** Attaches or removes the toolkit's window shadow/decoration.
+ *
+ *  Keep it ON where the platform gives the window system chrome from it (macOS: it is what
+ *  turns the window into a titled, closable, resizable AppKit window) and OFF where the
+ *  decoration would only inset the host's content (Wayland: the host then fills the whole
+ *  window instead of showing a frame around a smaller surface). Must be called before
+ *  dui_shim_run(). */
+DUI_SHIM_EXPORT void dui_shim_window_set_shadow(dui_shim_window* window, int32_t attached);
 DUI_SHIM_EXPORT void dui_shim_window_get_bounds(dui_shim_window* window, double* x_dip, double* y_dip, double* width_dip, double* height_dip);
 
 /** Feeds a left-button click at (x, y) in window coordinates into the toolkit, i.e. the

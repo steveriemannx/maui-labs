@@ -81,6 +81,10 @@ internal static partial class DuiNative
     [LibraryImport(LibraryName)]
     internal static partial void dui_shim_window_set_size_handler(nint window, nint callback, nint userData);
 
+    /// <summary>Attaches (1) or removes (0) the toolkit's window shadow/decoration.</summary>
+    [LibraryImport(LibraryName)]
+    internal static partial void dui_shim_window_set_shadow(nint window, int attached);
+
     [LibraryImport(LibraryName)]
     internal static partial nint dui_shim_window_root(nint window);
 

@@ -45,6 +45,13 @@ public sealed class DuiWindow : IDisposable
 
         var window = new DuiWindow(handle);
         window.AttachCloseHandler();
+
+        // Where the platform turns the decoration into real window chrome (macOS: a titled
+        // AppKit window with the traffic lights; Windows: the system frame) keep it. Where
+        // it would only inset the content (X11/Wayland) drop it, so the app fills the whole
+        // window instead of looking like a smaller surface inside a frame.
+        window.SetShadowAttached(OperatingSystem.IsMacOS() || OperatingSystem.IsWindows());
+
         return window;
     }
 
@@ -100,6 +107,21 @@ public sealed class DuiWindow : IDisposable
             _handle,
             Marshal.GetFunctionPointerForDelegate(_sizeCallback),
             0);
+    }
+
+    /// <summary>
+    /// Keeps or drops the toolkit's window shadow/decoration.
+    /// </summary>
+    /// <remarks>
+    /// The decoration is what gives the window its native chrome on macOS (a shadow-attached
+    /// window becomes a titled AppKit window with the traffic lights), but on Wayland/X11 it
+    /// only insets the content, which reads as a frame around a smaller window. Hosts
+    /// therefore choose per platform; see <c>WindowHandler</c>.
+    /// </remarks>
+    public void SetShadowAttached(bool attached)
+    {
+        ThrowIfDisposed();
+        DuiNative.dui_shim_window_set_shadow(_handle, attached ? 1 : 0);
     }
 
     /// <summary>True once the window has been disposed (closed and released).</summary>
