@@ -31,7 +31,7 @@ public class CalculatorPage : ContentPage
         _display = new Label
         {
             Text = "0",
-            FontSize = 44,
+            FontSize = 48,
             TextColor = s_textColor,
             HorizontalTextAlignment = TextAlignment.End,
             VerticalTextAlignment = TextAlignment.Center,
@@ -47,7 +47,7 @@ public class CalculatorPage : ContentPage
         };
 
         // A taller display row, so the digits have room of their own.
-        layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(120) });
+        layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(170) });
         for (var i = 0; i < 4; i++)
             layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Star });
 

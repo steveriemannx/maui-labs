@@ -71,9 +71,17 @@ if(APPLE)
   endif()
 endif()
 
-add_library(dui_shim SHARED
-  src/dui_shim.cpp
-)
+set(dui_shim_sources src/dui_shim.cpp)
+
+# macOS needs a little Objective-C++ to restore the AppKit title bar and traffic lights,
+# which dui hides for windows that draw their own caption (see src/macos_chrome.mm). Apple
+# only: nothing here is compiled or linked on other platforms.
+if(APPLE)
+  enable_language(OBJCXX)
+  list(APPEND dui_shim_sources src/macos_chrome.mm)
+endif()
+
+add_library(dui_shim SHARED ${dui_shim_sources})
 
 target_include_directories(dui_shim
   PUBLIC
@@ -82,6 +90,10 @@ target_include_directories(dui_shim
 )
 
 target_link_libraries(dui_shim PRIVATE dui::dui)
+
+if(APPLE)
+  target_link_libraries(dui_shim PRIVATE "-framework Cocoa")
+endif()
 
 target_compile_definitions(dui_shim PRIVATE DUI_SHIM_BUILD=1)
 
