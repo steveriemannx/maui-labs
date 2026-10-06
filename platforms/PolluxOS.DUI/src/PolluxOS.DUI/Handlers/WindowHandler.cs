@@ -73,6 +73,51 @@ public partial class WindowHandler : ElementHandler<IWindow, DuiWindow>
         var height = VirtualView.Height > 0 ? VirtualView.Height : 600;
         platformView.Root.SetBounds(new Rect(0, 0, width, height));
         ArrangeContent(width, height);
+        WatchClientSize(platformView);
+    }
+
+    /// <summary>
+    /// Re-lays out the content to the window's real client area once the toolkit's message
+    /// loop is running. Needed because some backends (Wayland) size the surface themselves
+    /// and ignore a requested resize — without this the page would sit in one corner of a
+    /// window that is larger than the size the app asked for.
+    /// </summary>
+    void WatchClientSize(DuiWindow platformView)
+    {
+        // Dispatcher lives on Element, not on the IWindow interface.
+        var dispatcher = VirtualView is Microsoft.Maui.Controls.Element element
+            ? element.Dispatcher
+            : null;
+
+        var thread = new Thread(() =>
+        {
+            for (var attempt = 0; attempt < 60; attempt++)
+            {
+                Thread.Sleep(50);
+
+                if (!platformView.TryGetClientSize(out var size))
+                    continue;
+
+                void Apply()
+                {
+                    platformView.Root.SetBounds(new Rect(0, 0, size.Width, size.Height));
+                    ArrangeContent(size.Width, size.Height);
+                }
+
+                if (dispatcher is not null && dispatcher.IsDispatchRequired)
+                    dispatcher.Dispatch(Apply);
+                else
+                    Apply();
+
+                return;
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "polluxos-dui-client-size",
+        };
+
+        thread.Start();
     }
 
     /// <summary>Runs the content's cross-platform measure/arrange pass.</summary>

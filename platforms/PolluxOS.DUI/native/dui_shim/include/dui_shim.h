@@ -99,6 +99,11 @@ DUI_SHIM_EXPORT void dui_shim_window_show(dui_shim_window* window, int32_t show)
 DUI_SHIM_EXPORT void dui_shim_window_close(dui_shim_window* window);
 DUI_SHIM_EXPORT void dui_shim_window_set_title(dui_shim_window* window, const char* title_utf8);
 DUI_SHIM_EXPORT void dui_shim_window_set_size(dui_shim_window* window, int32_t width_dip, int32_t height_dip);
+
+/** Reports the window's client area. Hosts lay their content out to this, because some
+ *  backends (Wayland) size the surface themselves and ignore a requested resize.
+ *  @return 1 on success, 0 if the size is not known yet (e.g. before dui_shim_run). */
+DUI_SHIM_EXPORT int32_t dui_shim_window_get_client_size(dui_shim_window* window, int32_t* width, int32_t* height);
 DUI_SHIM_EXPORT void dui_shim_window_get_bounds(dui_shim_window* window, double* x_dip, double* y_dip, double* width_dip, double* height_dip);
 
 /** Root container widget of the window (owned by the window; do not destroy).

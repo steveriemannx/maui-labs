@@ -64,6 +64,10 @@ internal static partial class DuiNative
     [LibraryImport(LibraryName)]
     internal static partial void dui_shim_window_set_size(nint window, int widthDip, int heightDip);
 
+    /// <summary>Client area of the window (0 when the toolkit cannot report it yet).</summary>
+    [LibraryImport(LibraryName)]
+    internal static partial int dui_shim_window_get_client_size(nint window, out int width, out int height);
+
     [LibraryImport(LibraryName)]
     internal static partial void dui_shim_window_get_bounds(nint window, out double x, out double y, out double width, out double height);
 

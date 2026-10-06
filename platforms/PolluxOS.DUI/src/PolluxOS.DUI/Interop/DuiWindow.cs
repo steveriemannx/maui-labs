@@ -67,6 +67,24 @@ public sealed class DuiWindow : IDisposable
 
     public void Show() => DuiNative.dui_shim_window_show(_handle, 1);
 
+    /// <summary>
+    /// Reads the toolkit's client area. Useful because some backends (Wayland) size the
+    /// surface themselves and ignore a requested resize, so a host should lay its content
+    /// out to what the window actually is.
+    /// </summary>
+    public bool TryGetClientSize(out Size size)
+    {
+        if (DuiNative.dui_shim_window_get_client_size(_handle, out var width, out var height) != 0
+            && width > 0 && height > 0)
+        {
+            size = new Size(width, height);
+            return true;
+        }
+
+        size = Size.Zero;
+        return false;
+    }
+
     public void Hide() => DuiNative.dui_shim_window_show(_handle, 0);
 
     public void Close()

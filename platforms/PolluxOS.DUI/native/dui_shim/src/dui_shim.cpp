@@ -732,6 +732,31 @@ void dui_shim_window_set_title(dui_shim_window* window, const char* title_utf8)
     DUI_SHIM_GUARD_END()
 }
 
+int32_t dui_shim_window_get_client_size(dui_shim_window* window, int32_t* width, int32_t* height)
+{
+    if (window == nullptr || window->window == nullptr)
+    {
+        SetError("dui: null window");
+        return 0;
+    }
+
+    int32_t client_width = 0;
+    int32_t client_height = 0;
+    const bool read = RunOnUiThreadSync([&]() {
+        ui::UiRect rc;
+        window->window->GetClientRect(rc);
+        client_width = rc.Width();
+        client_height = rc.Height();
+    });
+
+    if (width != nullptr)
+        *width = client_width;
+    if (height != nullptr)
+        *height = client_height;
+
+    return read && client_width > 0 && client_height > 0 ? 1 : 0;
+}
+
 void dui_shim_window_set_size(dui_shim_window* window, int32_t width_dip, int32_t height_dip)
 {
     DUI_SHIM_GUARD_BEGIN
