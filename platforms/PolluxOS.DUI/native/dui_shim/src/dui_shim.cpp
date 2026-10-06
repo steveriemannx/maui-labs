@@ -362,6 +362,11 @@ public:
     {
         ui::WindowImplBase::GetCreateWindowAttributes(createAttributes);
 
+#if defined(__APPLE__)
+        // macOS only: the create-time attributes are what make dui build a titled AppKit
+        // window with the system caption. Other backends keep dui's own defaults, which is
+        // what they were verified with (overriding them there changed how the native window
+        // was created and broke input/resize on Wayland).
         if (m_handle == nullptr)
             return;
 
@@ -369,6 +374,7 @@ public:
         createAttributes.m_bShadowAttachedDefined = true;
         createAttributes.m_bUseSystemCaption = m_handle->use_system_caption;
         createAttributes.m_bUseSystemCaptionDefined = true;
+#endif
     }
 
 private:
@@ -440,14 +446,6 @@ void DuiHost::OnInit()
             // Do not delete: the toolkit owns window lifetime.
             continue;
         }
-
-#if defined(__APPLE__)
-        // Find the AppKit window now: the host lays out as soon as the window is connected,
-        // and it needs the title-bar inset (the traffic lights float over the content) even
-        // before ShowWindow. The chrome helpers are idempotent.
-        handle->ns_window = dui_shim_macos_find_window(handle->title.c_str());
-        ApplyMacChrome(handle);
-#endif
 
         // Where the platform's own caption is not in use, the decoration still has to be
         // chosen after CreateWnd: Window::PreInitWindow (run inside it) creates the shadow
