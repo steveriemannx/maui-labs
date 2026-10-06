@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Microsoft",
+  "classifications": [ "MAUI", "PolluxOS", "DUI", "Desktop" ],
+  "identity": "Microsoft.Maui.Platforms.PolluxOS.DUI.App",
+  "name": ".NET MAUI App (PolluxOS.DUI)",
+  "shortName": "maui-polluxos-dui",
+  "description": "A .NET MAUI app rendered with the DUI toolkit. macOS is the bring-up target.",
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "sourceName": "PolluxOSDuiApp",
+  "preferNameDirectory": true,
+  "primaryOutputs": [
+    { "path": "PolluxOSDuiApp.csproj" }
+  ]
+}

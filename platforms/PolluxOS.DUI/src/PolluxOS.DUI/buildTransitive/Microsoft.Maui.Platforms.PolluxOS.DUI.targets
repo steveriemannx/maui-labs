@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <!--
+    Ships with the PolluxOS.DUI backend package.
+
+    Managed assemblies always ship in the package; the native bridge
+    (libdui_shim.dylib + the DUI dylibs it links) is built per-RID by
+    scripts/build-dui-macos.sh + scripts/build-native-macos.sh and staged next to
+    the assemblies by the consuming app.
+
+    Point the app at the staged directory to have the files copied to the output:
+
+      dotnet build -p:PolluxOSDuiNativeDir=/path/to/artifacts/native/macos
+
+    Nothing here fails the build when the native library is absent: a managed
+    build without the bridge is valid (the bridge is needed to run, not to
+    compile).
+  -->
+  <PropertyGroup>
+    <PolluxOSDuiNativeDir Condition="'$(PolluxOSDuiNativeDir)' == ''"></PolluxOSDuiNativeDir>
+    <PolluxOSDuiCopyNative Condition="'$(PolluxOSDuiCopyNative)' == ''">true</PolluxOSDuiCopyNative>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(PolluxOSDuiCopyNative)' == 'true' and '$(PolluxOSDuiNativeDir)' != '' and Exists('$(PolluxOSDuiNativeDir)')">
+    <None Include="$(PolluxOSDuiNativeDir)/*.dylib"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
+          Link="%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

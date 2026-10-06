@@ -135,6 +135,27 @@ A WPF-based alternative to the official WinUI backend for .NET MAUI. Run MAUI ap
 | [![NuGet: Microsoft.Maui.Platforms.Windows.WPF](https://img.shields.io/nuget/v/Microsoft.Maui.Platforms.Windows.WPF.svg?label=Microsoft.Maui.Platforms.Windows.WPF)](https://www.nuget.org/packages/Microsoft.Maui.Platforms.Windows.WPF/) | Core WPF backend — handlers, hosting, Blazor WebView |
 | [![NuGet: Microsoft.Maui.Platforms.Windows.WPF.Essentials](https://img.shields.io/nuget/v/Microsoft.Maui.Platforms.Windows.WPF.Essentials.svg?label=Microsoft.Maui.Platforms.Windows.WPF.Essentials)](https://www.nuget.org/packages/Microsoft.Maui.Platforms.Windows.WPF.Essentials/) | Essentials APIs for WPF |
 
+### PolluxOS.DUI Backend
+
+A .NET MAUI backend that renders through [DUI](https://github.com/rhett-lee/nim_duilib) — the MIT-licensed, cross-platform C++ toolkit with XML-described layout and Skia rendering. macOS is the bring-up target because DUI's Cocoa backend is its most developed one; the same bridge is intended to serve PolluxOS and DUI's other platforms.
+
+**Status: scaffold.** The native bridge (`dui_shim`, a C ABI over DUI's C++ API), the managed interop layer, the handler set below, a runnable sample, and the packaging/CI wiring are in place; the native library has not been compiled yet against a DUI tree in this repository, and the handler coverage is a starting subset.
+
+- **Bridge** — `libdui_shim.dylib`: window lifecycle, message-loop pumping, widget create/bounds/attributes/visibility/click, and a control-tree XML dump DUI itself does not provide
+- **Handlers** — Application, Window, ContentPage/ContentView, Layout, Label, Button
+- **Essentials** — file-backed `Preferences`; other services keep MAUI's default so missing platform support is visible instead of silently stubbed
+- **Licensing** — MIT throughout, except DUI's optional Windows-only `libpag` tree (GPL/LGPL), which no DUI CMake target links — see `THIRD-PARTY-NOTICES.txt`
+
+Build (macOS, after `maui` workload install):
+
+```bash
+platforms/PolluxOS.DUI/scripts/build-dui-macos.sh      # CMake 4.0+, Skia built from source
+platforms/PolluxOS.DUI/scripts/build-native-macos.sh   # stages libdui_shim.dylib
+dotnet build platforms/PolluxOS.DUI/PolluxOS.DUI.slnx
+```
+
+See [platforms/PolluxOS.DUI/README.md](platforms/PolluxOS.DUI/README.md) for the full picture.
+
 ### Essentials.AI
 
 On-device AI capabilities for .NET MAUI via `Microsoft.Extensions.AI` abstractions. On Apple platforms, wraps Apple Intelligence (Foundation Models) for chat completion with streaming and tool calling, and Apple NaturalLanguage APIs for on-device embeddings.

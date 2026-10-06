@@ -110,3 +110,29 @@ Microsoft.Extensions.*              MIT         https://github.com/dotnet/runtim
 Microsoft.Maui.*                    MIT         https://github.com/dotnet/maui
 Platform.Maui.MacOS                 MIT         https://github.com/nickreynolds/macOS.Maui
 Platform.Maui.Linux.Gtk4            MIT         https://github.com/nickreynolds/MauiGtk
+
+========================================================================
+DUI — dependency of platforms/PolluxOS.DUI
+========================================================================
+
+https://github.com/rhett-lee/nim_duilib  (English port: "dui")
+
+Copyright (c) 2023 rhett-lee
+
+MIT License
+
+DUI is consumed as a source build (CMake): the repository redistributes neither
+the toolkit nor its archives, only the dui_shim bridge that links them.
+
+DUI's own vendored dependencies are permissive — Skia (BSD-3-Clause), libpng
+(libpng License v2), zlib, libwebp (BSD-3-Clause), libjpeg-turbo (IJG + BSD-3),
+giflib (MIT), stb_image (MIT/public domain), nanosvg (zlib), pugixml (MIT),
+udis86 (BSD-2-Clause), libcef (BSD-3-Clause), WebView2 SDK (BSD-3-Clause),
+ConvertUTF (Apache-2.0 with LLVM exception).
+
+FLAG — third_party/libpag is the one exception. It is Windows-only, disabled by
+default, and no DUI CMake target references it, but its bundled components are
+GPL/LGPL: lz4 (GPL-2.0 for programs/tests/examples), ffavc + bundled FFmpeg
+(LGPL-2.1), and Qt components (LGPL-3.0, some GPL-3.0). Never enable libpag in a
+shipped product without legal review; the default build never links it.
+

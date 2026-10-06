@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-macos</TargetFramework>
+    <SupportedOSPlatformVersion>14.0</SupportedOSPlatformVersion>
+    <RootNamespace>Microsoft.Maui.Platforms.PolluxOS.DUI.Essentials</RootNamespace>
+    <AssemblyName>Microsoft.Maui.Platforms.PolluxOS.DUI.Essentials</AssemblyName>
+    <PackageId>Microsoft.Maui.Platforms.PolluxOS.DUI.Essentials</PackageId>
+    <Version>$(PlatformMauiPolluxOSDuiVersion)</Version>
+    <Description>MAUI Essentials implementations for the PolluxOS.DUI backend (preferences, clipboard, app info; the rest are stubs pending a PolluxOS runtime).</Description>
+    <PackageTags>maui;essentials;polluxos;dui</PackageTags>
+    <IsPackable>true</IsPackable>
+    <IsShipping>true</IsShipping>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Essentials" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-macos</TargetFramework>
+    <SupportedOSPlatformVersion>14.0</SupportedOSPlatformVersion>
+    <OutputType>Exe</OutputType>
+    <UseMaui>true</UseMaui>
+    <RootNamespace>PolluxOSDuiApp</RootNamespace>
+    <AssemblyName>PolluxOSDuiApp</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PolluxOSDuiNativeDir Condition="'$(PolluxOSDuiNativeDir)' == ''">$(MSBuildThisFileDirectory)artifacts/native/macos</PolluxOSDuiNativeDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Controls" Version="__MAUI_VERSION__" />
+    <PackageReference Include="Microsoft.Maui.Platforms.PolluxOS.DUI" Version="__DUI_VERSION__" />
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(PolluxOSDuiNativeDir)')">
+    <None Include="$(PolluxOSDuiNativeDir)/*.dylib"
+          CopyToOutputDirectory="PreserveNewest"
+          Link="%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>

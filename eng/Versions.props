@@ -77,6 +77,9 @@
     <PlatformMauiMacOSVersion>0.3.0</PlatformMauiMacOSVersion>
     <PlatformMauiMacOSBlazorWebViewVersion>$(PlatformMauiMacOSVersion)</PlatformMauiMacOSBlazorWebViewVersion>
     <PlatformMauiMacOSEssentialsVersion>$(PlatformMauiMacOSVersion)</PlatformMauiMacOSEssentialsVersion>
+    <!-- PolluxOS.DUI: DUI-toolkit backend, macOS bring-up (see platforms/PolluxOS.DUI/README.md) -->
+    <PlatformMauiPolluxOSDuiVersion>0.1.0</PlatformMauiPolluxOSDuiVersion>
+    <PlatformMauiPolluxOSDuiEssentialsVersion>$(PlatformMauiPolluxOSDuiVersion)</PlatformMauiPolluxOSDuiEssentialsVersion>
   </PropertyGroup>
   <!-- EssentialsAI package version (continues the NuGet line that existed before moving into this repo). -->
   <PropertyGroup Label="EssentialsAI">

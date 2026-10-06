@@ -1,0 +1,66 @@
+name: CI - PolluxOS.DUI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/ci-polluxos-dui.yml'
+      - '.github/workflows/_build.yml'
+      - 'platforms/PolluxOS.DUI/**'
+      - 'eng/**'
+      - 'Directory.Build.props'
+      - 'Directory.Build.targets'
+      - 'Directory.Packages.props'
+      - 'global.json'
+      - 'NuGet.config'
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+    paths:
+      - '.github/workflows/ci-polluxos-dui.yml'
+      - '.github/workflows/_build.yml'
+      - 'platforms/PolluxOS.DUI/**'
+      - 'eng/**'
+      - 'Directory.Build.props'
+      - 'Directory.Build.targets'
+      - 'Directory.Packages.props'
+      - 'global.json'
+      - 'NuGet.config'
+
+jobs:
+  # Managed build + tests on macOS. The native half of this product needs a DUI
+  # build (CMake 4.0+, Skia compiled from source, ~12+ min and a ~70 MB download),
+  # so it is built by scripts/build-dui-macos.sh locally rather than in every PR.
+  # This job therefore verifies the managed backend: the bridge compiles, the
+  # managed tests pass, and the templates pack.
+  managed:
+    uses: ./.github/workflows/_build.yml
+    with:
+      project-path: platforms/PolluxOS.DUI/PolluxOS.DUI.slnx
+      project-name: polluxos-dui
+      os: '["macos-latest"]'
+      install-workloads: true
+      run-tests: true
+      pack: true
+
+  # Contract check: the shim header and its P/Invoke declarations must agree.
+  # Cheap, needs no native build, and catches the most common bridge drift.
+  shim-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - name: Verify every dui_shim_* entry point is declared in both the header and DuiNative.cs
+        shell: bash
+        run: |
+          set -euo pipefail
+          header=platforms/PolluxOS.DUI/native/dui_shim/include/dui_shim.h
+          interop=platforms/PolluxOS.DUI/src/PolluxOS.DUI/Interop/DuiNative.cs
+          grep -o 'dui_shim_[a-z_]*(' "$header" | tr -d '(' | sort -u > /tmp/header.txt
+          grep -o 'dui_shim_[a-z_]*(' "$interop" | tr -d '(' | sort -u > /tmp/interop.txt
+          echo "header: $(wc -l < /tmp/header.txt) entry points"
+          if ! diff -u /tmp/header.txt /tmp/interop.txt; then
+            echo "::error::dui_shim.h and DuiNative.cs diverged — update both in the same PR."
+            exit 1
+          fi

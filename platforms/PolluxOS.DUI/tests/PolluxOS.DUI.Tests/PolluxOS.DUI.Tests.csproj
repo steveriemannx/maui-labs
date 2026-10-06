@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-macos</TargetFramework>
+    <SupportedOSPlatformVersion>14.0</SupportedOSPlatformVersion>
+    <IsPackable>false</IsPackable>
+    <IsShipping>false</IsShipping>
+    <IsTestProject>true</IsTestProject>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit" />
+    <PackageReference Include="coverlet.collector" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PolluxOS.DUI\PolluxOS.DUI.csproj" />
+  </ItemGroup>
+
+    <PropertyGroup>
+    <PolluxOSDuiNativeDir Condition="'$(PolluxOSDuiNativeDir)' == ''">$(MSBuildThisFileDirectory)../../artifacts/native/macos</PolluxOSDuiNativeDir>
+  </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(PolluxOSDuiNativeDir)')">
+    <None Include="$(PolluxOSDuiNativeDir)/*.dylib"
+          CopyToOutputDirectory="PreserveNewest"
+          Link="%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>

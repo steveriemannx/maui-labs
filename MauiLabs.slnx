@@ -99,4 +99,9 @@
     <Project Path="platforms/Windows.WPF/src/Windows.WPF/Windows.WPF.csproj" />
     <Project Path="platforms/Windows.WPF/src/Windows.WPF.Essentials/Windows.WPF.Essentials.csproj" />
   </Folder>
+  <Folder Name="/platforms/PolluxOS.DUI/">
+    <Project Path="platforms/PolluxOS.DUI/src/PolluxOS.DUI/PolluxOS.DUI.csproj" />
+    <Project Path="platforms/PolluxOS.DUI/src/PolluxOS.DUI.Essentials/PolluxOS.DUI.Essentials.csproj" />
+    <Project Path="platforms/PolluxOS.DUI/tests/PolluxOS.DUI.Tests/PolluxOS.DUI.Tests.csproj" />
+  </Folder>
 </Solution>

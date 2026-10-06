@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PolluxOS.DUI/PolluxOS.DUI.csproj" />
+    <Project Path="src/PolluxOS.DUI.Essentials/PolluxOS.DUI.Essentials.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/PolluxOS.DUI.Sample/PolluxOS.DUI.Sample.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PolluxOS.DUI.Tests/PolluxOS.DUI.Tests.csproj" />
+  </Folder>
+  <Folder Name="/templates/">
+    <Project Path="templates/PolluxOS.DUI.Templates.csproj" />
+  </Folder>
+</Solution>

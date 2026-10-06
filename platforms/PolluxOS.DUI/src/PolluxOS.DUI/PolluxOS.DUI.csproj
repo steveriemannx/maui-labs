@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      Bring-up target is macOS: DUI itself is cross-platform (Windows/Linux/macOS/FreeBSD),
+      and its Cocoa/AppKit backend lets the bridge be developed and tested on a Mac today.
+      A PolluxOS TFM is added once that platform has a .NET runtime/TFM to build against.
+    -->
+    <TargetFramework>net10.0-macos</TargetFramework>
+    <SupportedOSPlatformVersion>14.0</SupportedOSPlatformVersion>
+    <RootNamespace>Microsoft.Maui.Platforms.PolluxOS.DUI</RootNamespace>
+    <AssemblyName>Microsoft.Maui.Platforms.PolluxOS.DUI</AssemblyName>
+    <PackageId>Microsoft.Maui.Platforms.PolluxOS.DUI</PackageId>
+    <Version>$(PlatformMauiPolluxOSDuiVersion)</Version>
+    <Description>A .NET MAUI backend that renders through the DUI toolkit (XML-driven layout + Skia). Develop and test on macOS first — DUI is cross-platform.</Description>
+    <PackageTags>maui;polluxos;dui;skia;desktop;dotnet;cross-platform</PackageTags>
+    <IsPackable>true</IsPackable>
+    <IsShipping>true</IsShipping>
+    <!-- LibraryImport-generated P/Invoke helpers are emitted as unsafe code. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Microsoft.Maui.Platforms.PolluxOS.DUI.Essentials" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Controls" />
+  </ItemGroup>
+
+  <!-- Linker descriptor: preserve all public API types for AOT/trimming -->
+  <ItemGroup>
+    <EmbeddedResource Include="ILLink.Descriptors.xml">
+      <LogicalName>ILLink.Descriptors.xml</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="buildTransitive/**" Pack="true" PackagePath="buildTransitive/" />
+    <None Include="buildTransitive/**" Pack="true" PackagePath="build/" />
+  </ItemGroup>
+
+</Project>
