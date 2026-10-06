@@ -42,6 +42,20 @@ public partial class LayoutHandler : DuiViewHandler<ILayout>
     // arrive through the ILayoutHandler commands — so the handler tracks what it added.
     readonly List<DuiWidget> _children = new();
 
+    protected override void ConnectHandler(DuiWidget platformView)
+    {
+        base.ConnectHandler(platformView);
+
+        // Children that already existed when the handler was created never raise an
+        // ILayoutHandler.Add command, so realize them here (the concrete Layout type
+        // exposes them; ILayout itself does not).
+        if (VirtualView is Microsoft.Maui.Controls.Layout layout)
+        {
+            foreach (var child in layout.Children)
+                RealizeChild((IView)child);
+        }
+    }
+
     public void Add(IView child) => RealizeChild(child);
 
     public void Insert(int index, IView child)

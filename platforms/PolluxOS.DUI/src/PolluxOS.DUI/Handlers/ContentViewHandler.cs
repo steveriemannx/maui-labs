@@ -22,6 +22,16 @@ public partial class ContentViewHandler : DuiViewHandler<IContentView>
 
     protected override string ControlClass => DuiControlClass.Box;
 
+    protected override void ConnectHandler(DuiWidget platformView)
+    {
+        base.ConnectHandler(platformView);
+
+        // The page's content is usually set before the handler exists, so realize it on
+        // connect as well as through the property mapper.
+        if (VirtualView is not null)
+            SetContent(VirtualView.PresentedContent ?? VirtualView.Content as IView);
+    }
+
     public static void MapPresentedContent(ContentViewHandler handler, IContentView view)
         => handler.SetContent(view.PresentedContent ?? view.Content as IView);
 

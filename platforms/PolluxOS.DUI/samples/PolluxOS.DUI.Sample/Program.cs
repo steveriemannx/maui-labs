@@ -56,8 +56,28 @@ try
     };
     duiWindow.Show();
 
-    Console.WriteLine("Widget tree at startup:");
-    Console.WriteLine(duiWindow.TryDumpXml() ?? "(bridge could not serialize the tree)");
+    // Optional automated probe: "PolluxOS.DUI.Sample <resources> [seconds]" dumps the
+    // widget tree and closes the window after N seconds, so the host terminates on its
+    // own (used for the headless/remote runs).
+    var probeSeconds = args.Length > 1 && int.TryParse(args[1], out var parsed) ? parsed : 0;
+    if (probeSeconds > 0)
+    {
+        var probe = new Thread(() =>
+        {
+            Thread.Sleep(TimeSpan.FromSeconds(probeSeconds));
+            Console.WriteLine("Widget tree:");
+            Console.WriteLine(duiWindow.TryDumpXml() ?? "(dump unavailable)");
+            Console.WriteLine(duiWindow.TryCapturePpm("maui_host.ppm")
+                ? "Capture: maui_host.ppm"
+                : "Capture: unavailable on this platform");
+            duiWindow.Close();
+        })
+        {
+            IsBackground = true,
+            Name = "maui-host-probe",
+        };
+        probe.Start();
+    }
 
     return DuiRuntime.Run();
 }
