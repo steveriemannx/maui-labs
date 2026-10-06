@@ -27,16 +27,17 @@ if(APPLE)
 endif()
 
 # DUI's exported target carries pkg-config imported targets on its link interface
-# (e.g. PkgConfig::WAYLAND_CLIENT for the Wayland backend, X11/Xext for X11) but the
-# installed duiConfig.cmake does not create them, so find_package(dui) fails with
-# "the target was not found". Recreate them here when pkg-config knows the module.
+# (Wayland: WAYLAND_CLIENT/EGL/CURSOR, XKBCOMMON, EGL, GLESV2; X11: X11/XEXT) but
+# the installed duiConfig.cmake does not create them, so find_package(dui) fails
+# with "the target was not found". Recreate each one whose pkg-config module is
+# present; the module name is the lowercased, dash-joined target suffix.
 if(UNIX AND NOT APPLE)
   find_package(PkgConfig QUIET)
   if(PkgConfig_FOUND)
-    foreach(_dui_pkg "WAYLAND_CLIENT;wayland-client" "X11;x11" "XEXT;xext")
-      list(GET _dui_pkg 0 _dui_target_suffix)
-      list(GET _dui_pkg 1 _dui_module)
+    foreach(_dui_target_suffix WAYLAND_CLIENT WAYLAND_EGL WAYLAND_CURSOR XKBCOMMON EGL GLESV2 X11 XEXT)
       if(NOT TARGET PkgConfig::${_dui_target_suffix})
+        string(TOLOWER "${_dui_target_suffix}" _dui_module)
+        string(REPLACE "_" "-" _dui_module "${_dui_module}")
         pkg_check_modules(${_dui_target_suffix} QUIET IMPORTED_TARGET ${_dui_module})
         if(TARGET PkgConfig::${_dui_target_suffix})
           message(STATUS "dui_shim: recreated PkgConfig::${_dui_target_suffix} (${_dui_module}) for dui::dui")
