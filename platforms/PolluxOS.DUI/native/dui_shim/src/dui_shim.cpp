@@ -964,25 +964,24 @@ void dui_shim_widget_set_bounds(dui_shim_widget* widget, double x_dip, double y_
             SetAsyncError("dui: set_bounds: the widget has no control yet");
             return;
         }
-        // Sizes first (these re-run the parent layout), position last: the managed
-        // side hands us DIP, so bNeedDpiScale=false avoids double-scaling on HiDPI.
-        control->SetFixedWidth(ui::UiFixedInt::MakeInt(static_cast<int32_t>(width_dip)), true, false);
-        control->SetFixedHeight(ui::UiFixedInt::MakeInt(static_cast<int32_t>(height_dip)), true, false);
-        // duilib's container layout owns its children's rectangles; "float=true" takes
-        // the control out of the layout flow so MAUI's arranged rect is authoritative
-        // (src/Core/Box.cpp:110 shows Box::SetPos re-arranging children).
-        control->SetAttribute("float", "true");
-        control->SetPos(ui::UiRect(static_cast<int32_t>(x_dip), static_cast<int32_t>(y_dip),
-                                   static_cast<int32_t>(x_dip + width_dip),
-                                   static_cast<int32_t>(y_dip + height_dip)));
-        control->SetAttribute("pos",
-            std::to_string(static_cast<int32_t>(x_dip)) + "," + std::to_string(static_cast<int32_t>(y_dip)) + "," +
-            std::to_string(static_cast<int32_t>(x_dip + width_dip)) + "," +
-            std::to_string(static_cast<int32_t>(y_dip + height_dip)));
+        // A container's layout owns its children's rectangles, so MAUI's arranged
+        // rectangle is expressed the way duilib expects for an absolutely positioned
+        // control: float + fixed size + margin (Layout::GetFloatPos derives the child's
+        // position from the margin, and ArrangeChildren only keeps an externally set
+        // position for controls that are floating — see src/Layout/Layout.cpp:160).
+        const auto x = static_cast<int32_t>(x_dip);
+        const auto y = static_cast<int32_t>(y_dip);
+        const auto w = static_cast<int32_t>(width_dip);
+        const auto h = static_cast<int32_t>(height_dip);
+
+        control->SetFloat(true);
+        // bNeedDpiScale=false everywhere: the managed side always hands us DIP.
+        control->SetFixedWidth(ui::UiFixedInt::MakeInt(w), true, false);
+        control->SetFixedHeight(ui::UiFixedInt::MakeInt(h), true, false);
+        control->SetMargin(ui::UiMargin(x, y, 0, 0), false);
         control->Invalidate();
-        Trace("set_bounds " + widget->name + " -> " + std::to_string((int)x_dip) + "," +
-              std::to_string((int)y_dip) + " " + std::to_string((int)width_dip) + "x" +
-              std::to_string((int)height_dip));
+        Trace("set_bounds " + widget->name + " -> " + std::to_string(x) + "," + std::to_string(y) +
+              " " + std::to_string(w) + "x" + std::to_string(h));
     });
     DUI_SHIM_GUARD_END()
 }
