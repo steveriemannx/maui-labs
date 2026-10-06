@@ -85,6 +85,17 @@ internal static partial class DuiNative
     [LibraryImport(LibraryName)]
     internal static partial void dui_shim_window_set_shadow(nint window, int attached);
 
+    /// <summary>Resizes the window's client area (macOS goes through AppKit). Returns 1
+    /// when the request was accepted.</summary>
+    [LibraryImport(LibraryName)]
+    internal static partial int dui_shim_window_set_client_size(nint window, int width, int height);
+
+    /// <summary>Area to keep clear of (macOS title bar). Returns 1 when the platform
+    /// reports one.</summary>
+    [LibraryImport(LibraryName)]
+    internal static partial int dui_shim_window_get_content_insets(
+        nint window, out int top, out int left, out int bottom, out int right);
+
     [LibraryImport(LibraryName)]
     internal static partial nint dui_shim_window_root(nint window);
 

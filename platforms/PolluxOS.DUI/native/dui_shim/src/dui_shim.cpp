@@ -44,6 +44,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <deque>
@@ -202,6 +203,20 @@ struct dui_shim_window
 
     /// Whether the toolkit should attach its window shadow/decoration (default: yes).
     bool shadow_attached = true;
+
+#if defined(__APPLE__)
+    /// The AppKit window, remembered so chrome/resize helpers do not have to search for it.
+    void* ns_window = nullptr;
+#endif
+
+    /// Ask the toolkit for the platform's own title bar/caption (macOS: the AppKit title
+    /// bar with its traffic lights) instead of dui's self-drawn caption.
+    bool use_system_caption =
+#if defined(__APPLE__)
+        true;
+#else
+        false;
+#endif
 };
 
 namespace {
@@ -297,7 +312,68 @@ private:
 extern "C" void* dui_shim_macos_find_window(const char* title);
 extern "C" void dui_shim_macos_show_system_chrome(void* nsWindow, const char* title);
 extern "C" int dui_shim_macos_describe_chrome(void* nsWindow, int* styleMask, int* buttonsHidden, int* titleVisible);
+extern "C" int dui_shim_macos_set_content_size(void* nsWindow, int width, int height);
+extern "C" int dui_shim_macos_content_insets(void* nsWindow, int* top, int* left, int* bottom, int* right,
+                                            int* viewHeight);
 #endif
+
+
+#if defined(__APPLE__)
+// dui hides the AppKit title bar and the traffic lights for windows that draw their own
+// caption, and there is no path that shows them again (see src/macos_chrome.mm). Applied
+// after ShowWindow: changing the style mask before AppKit has sized/ordered the window
+// leaves the content view with a bogus frame.
+void ApplyMacChrome(dui_shim_window* handle)
+{
+    if (handle == nullptr || handle->window == nullptr)
+        return;
+
+    if (handle->ns_window == nullptr)
+        handle->ns_window = dui_shim_macos_find_window(handle->title.c_str());
+
+    void* nsWindow = handle->ns_window;
+    if (nsWindow == nullptr)
+        return;
+
+    dui_shim_macos_show_system_chrome(nsWindow, handle->title.c_str());
+
+    int styleMask = 0;
+    int buttonsHidden = 0;
+    int titleVisible = 0;
+    if (dui_shim_macos_describe_chrome(nsWindow, &styleMask, &buttonsHidden, &titleVisible) != 0)
+    {
+        Trace(std::string("macOS chrome: styleMask=") + std::to_string(styleMask)
+              + " trafficLightsHidden=" + (buttonsHidden ? "1" : "0")
+              + " titleVisible=" + (titleVisible ? "1" : "0"));
+    }
+}
+#endif
+
+// Window subclass used by the bridge. The create-time attributes decide what the toolkit
+// builds: whether it attaches its shadow/decoration and whether it uses the platform's own
+// caption. Patching the platform window afterwards does not work — dui has already sized
+// its view by then, and macOS recomputes the content view into a degenerate frame.
+class DuiWindowImpl : public ui::WindowImplBase
+{
+public:
+    explicit DuiWindowImpl(dui_shim_window* handle) : m_handle(handle) {}
+
+    void GetCreateWindowAttributes(ui::WindowCreateAttributes& createAttributes) override
+    {
+        ui::WindowImplBase::GetCreateWindowAttributes(createAttributes);
+
+        if (m_handle == nullptr)
+            return;
+
+        createAttributes.m_bShadowAttached = m_handle->shadow_attached;
+        createAttributes.m_bShadowAttachedDefined = true;
+        createAttributes.m_bUseSystemCaption = m_handle->use_system_caption;
+        createAttributes.m_bUseSystemCaptionDefined = true;
+    }
+
+private:
+    dui_shim_window* m_handle = nullptr;
+};
 
 ui::UiSize UsableClientSize(dui_shim_window* window)
 {
@@ -306,12 +382,21 @@ ui::UiSize UsableClientSize(dui_shim_window* window)
 
     int32_t width = rc.Width();
     int32_t height = rc.Height();
+
+#if !defined(__APPLE__)
+    // On X11/Wayland dui attaches the window's decoration as a ShadowBox and GetClientRect
+    // reports the whole surface, so the container's own position is the decoration inset
+    // that has to come off. On macOS AppKit already reports the content view, and with the
+    // system caption in use the container's position is layout, not an inset.
     if (window->root.control != nullptr)
     {
         const ui::UiRect rootPos = window->root.control->GetPos();
         width -= rootPos.left * 2;
         height -= rootPos.top * 2;
     }
+#else
+    Trace("client rect raw=" + std::to_string(rc.Width()) + "x" + std::to_string(rc.Height()));
+#endif
 
     return ui::UiSize(width > 0 ? width : 0, height > 0 ? height : 0);
 }
@@ -342,7 +427,7 @@ void DuiHost::OnInit()
         if (handle->window != nullptr)
             continue;
 
-        auto* window = new ui::WindowImplBase();
+        auto* window = new DuiWindowImpl(handle);
         if (!handle->skin_file.empty())
         {
             // XML mode: the window parses resources/themes/<theme>/<skin>/<file>.xml
@@ -356,32 +441,18 @@ void DuiHost::OnInit()
             continue;
         }
 
-        // The decoration must be chosen *after* CreateWnd: Window::PreInitWindow (run
-        // inside it) is what creates the shadow object, and SetShadowAttached before that
-        // is a no-op. Window::AttachBox wraps the root in a ShadowBox only while the shadow
-        // is attached, so setting it here is what decides whether the host's content fills
-        // the window or sits inside a decoration frame. On macOS the attached shadow is
-        // also what makes AppKit give the window its title bar and traffic lights.
-        window->SetUseDefaultShadowAttached(false);
-        window->SetShadowAttached(handle->shadow_attached);
-
-#if defined(__APPLE__)
-        // Restore the macOS title bar + traffic lights (see macos_chrome.mm).
-        if (void* nsWindow = dui_shim_macos_find_window(handle->title.c_str()))
+        // Where the platform's own caption is not in use, the decoration still has to be
+        // chosen after CreateWnd: Window::PreInitWindow (run inside it) creates the shadow
+        // object, so SetShadowAttached before that is a no-op. Window::AttachBox wraps the
+        // root in a ShadowBox only while the shadow is attached, which decides whether the
+        // host's content fills the window or sits inside a decoration frame.
+        if (!handle->use_system_caption)
         {
-            dui_shim_macos_show_system_chrome(nsWindow, handle->title.c_str());
-
-            int styleMask = 0;
-            int buttonsHidden = 0;
-            int titleVisible = 0;
-            if (dui_shim_macos_describe_chrome(nsWindow, &styleMask, &buttonsHidden, &titleVisible) != 0)
-            {
-                Trace(std::string("macOS chrome: styleMask=") + std::to_string(styleMask)
-                      + " trafficLightsHidden=" + (buttonsHidden ? "1" : "0")
-                      + " titleVisible=" + (titleVisible ? "1" : "0"));
-            }
+            window->SetUseDefaultShadowAttached(false);
+            window->SetShadowAttached(handle->shadow_attached);
         }
-#endif
+
+
 
         window->PostQuitMsgWhenClosed(true);
         handle->window = window;
@@ -438,6 +509,11 @@ void DuiHost::OnInit()
             // 800x600 and the host's layout ends up in a corner.
             ApplyClientSize(window, handle->width, handle->height);
         }
+
+#if defined(__APPLE__)
+        if (handle->shown)
+            ApplyMacChrome(handle);
+#endif
     }
 
     // From here the idle loop services the command queue, so synchronous reads
@@ -761,6 +837,10 @@ void dui_shim_window_show(dui_shim_window* window, int32_t show)
 
             // See OnInit: apply the requested size after the surface is mapped.
             ApplyClientSize(window->window, window->width, window->height);
+
+#if defined(__APPLE__)
+            ApplyMacChrome(window);
+#endif
         }
         else if (show == 0 && window->shown)
         {
@@ -1317,6 +1397,92 @@ int32_t dui_shim_window_simulate_click(dui_shim_window* window, int32_t x, int32
     });
 
     return 1;
+    DUI_SHIM_GUARD_END(0)
+}
+
+int32_t dui_shim_window_get_content_insets(dui_shim_window* window, int32_t* top, int32_t* left, int32_t* bottom, int32_t* right)
+{
+    DUI_SHIM_GUARD_BEGIN
+    if (top != nullptr) *top = 0;
+    if (left != nullptr) *left = 0;
+    if (bottom != nullptr) *bottom = 0;
+    if (right != nullptr) *right = 0;
+
+    if (window == nullptr)
+    {
+        SetError("dui: null window");
+        return 0;
+    }
+
+#if defined(__APPLE__)
+    void* nsWindow = window->ns_window;
+    if (nsWindow == nullptr)
+    {
+        // Not created yet; the host asks again once the loop is running.
+        return 0;
+    }
+
+    int topPt = 0;
+    int leftPt = 0;
+    int bottomPt = 0;
+    int rightPt = 0;
+    int viewHeightPt = 0;
+    if (dui_shim_macos_content_insets(nsWindow, &topPt, &leftPt, &bottomPt, &rightPt, &viewHeightPt) == 0)
+        return 0;
+
+    // AppKit reports points; dui lays out in device pixels when pixel density is on, so
+    // scale by the ratio between the client area dui reports and the view's own height.
+    const ui::UiSize client = UsableClientSize(window);
+    const double scale = (viewHeightPt > 0 && client.cy > 0)
+                             ? static_cast<double>(client.cy) / static_cast<double>(viewHeightPt)
+                             : 1.0;
+
+    if (top != nullptr) *top = static_cast<int32_t>(std::lround(topPt * scale));
+    if (left != nullptr) *left = static_cast<int32_t>(std::lround(leftPt * scale));
+    if (bottom != nullptr) *bottom = static_cast<int32_t>(std::lround(bottomPt * scale));
+    if (right != nullptr) *right = static_cast<int32_t>(std::lround(rightPt * scale));
+
+    Trace("content insets (px): top=" + std::to_string(top != nullptr ? *top : 0)
+          + " left=" + std::to_string(left != nullptr ? *left : 0)
+          + " scale=" + std::to_string(scale));
+    return 1;
+#else
+    // Wayland/X11 windows carry a decoration that already insets the client area, which
+    // dui_shim_window_get_client_size() accounts for, so there is nothing extra to avoid.
+    return 0;
+#endif
+    DUI_SHIM_GUARD_END(0)
+}
+
+int32_t dui_shim_window_set_client_size(dui_shim_window* window, int32_t width, int32_t height)
+{
+    DUI_SHIM_GUARD_BEGIN
+    if (window == nullptr || window->window == nullptr || width <= 0 || height <= 0)
+    {
+        SetError("dui: invalid window or size");
+        return 0;
+    }
+
+#if defined(__APPLE__)
+    // WindowBase::Resize ends in SetWindowPos, which the macOS backend does not implement;
+    // AppKit has to do it.
+    void* nsWindow = window->ns_window != nullptr
+                         ? window->ns_window
+                         : dui_shim_macos_find_window(window->title.c_str());
+    if (nsWindow == nullptr)
+    {
+        SetError("dui: the AppKit window is not available yet");
+        return 0;
+    }
+
+    if (window->window->IsWindowVisible() && window->ns_window == nullptr)
+        window->ns_window = nsWindow;
+
+    return dui_shim_macos_set_content_size(nsWindow, width, height) != 0 ? 1 : 0;
+#else
+    window->window->Resize(width, height, false, false);
+    return 1;
+#endif
     DUI_SHIM_GUARD_END(0)
 }
 

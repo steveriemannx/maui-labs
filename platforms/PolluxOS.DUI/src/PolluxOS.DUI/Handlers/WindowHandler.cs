@@ -69,10 +69,9 @@ public partial class WindowHandler : ElementHandler<IWindow, DuiWindow>
         // measured/arranged so every handler below it receives a real rectangle.
         content.ToHandler(MauiContext);
 
-        var width = VirtualView.Width > 0 ? VirtualView.Width : 800;
-        var height = VirtualView.Height > 0 ? VirtualView.Height : 600;
-        platformView.Root.SetBounds(new Rect(0, 0, width, height));
-        ArrangeContent(width, height);
+        var width = (int)Math.Round(VirtualView.Width > 0 ? VirtualView.Width : 800);
+        var height = (int)Math.Round(VirtualView.Height > 0 ? VirtualView.Height : 600);
+        ApplyClientLayout(platformView, width, height);
 
         // Immediate re-layout on the toolkit's size notification, plus the poll below as a
         // safety net for backends that do not raise it.
@@ -93,8 +92,8 @@ public partial class WindowHandler : ElementHandler<IWindow, DuiWindow>
         if (width <= 0 || height <= 0)
             return;
 
-        PlatformView?.Root.SetBounds(new Rect(0, 0, width, height));
-        ArrangeContent(width, height);
+        if (PlatformView is { } platformView)
+            ApplyClientLayout(platformView, width, height);
     }
 
     /// <summary>
@@ -126,11 +125,7 @@ public partial class WindowHandler : ElementHandler<IWindow, DuiWindow>
 
                 lastApplied = size;
 
-                void Apply()
-                {
-                    platformView.Root.SetBounds(new Rect(0, 0, size.Width, size.Height));
-                    ArrangeContent(size.Width, size.Height);
-                }
+                void Apply() => ApplyClientLayout(platformView, (int)size.Width, (int)size.Height);
 
                 if (dispatcher is not null && dispatcher.IsDispatchRequired)
                     dispatcher.Dispatch(Apply);
@@ -144,6 +139,29 @@ public partial class WindowHandler : ElementHandler<IWindow, DuiWindow>
         };
 
         thread.Start();
+    }
+
+    /// <summary>
+    /// Sizes the root container to the client area minus the platform insets (the macOS
+    /// title bar floats above a full-size content view, so the layout has to stay clear of
+    /// it) and re-runs the content's layout pass inside what is left.
+    /// </summary>
+    void ApplyClientLayout(DuiWindow platformView, int width, int height)
+    {
+        var top = 0;
+        var left = 0;
+        var bottom = 0;
+        var right = 0;
+        if (!platformView.TryGetContentInsets(out top, out left, out bottom, out right))
+        {
+            top = left = bottom = right = 0;
+        }
+
+        var innerWidth = Math.Max(1, width - left - right);
+        var innerHeight = Math.Max(1, height - top - bottom);
+
+        platformView.Root.SetBounds(new Rect(left, top, innerWidth, innerHeight));
+        ArrangeContent(innerWidth, innerHeight);
     }
 
     /// <summary>Runs the content's cross-platform measure/arrange pass.</summary>
@@ -168,8 +186,7 @@ public partial class WindowHandler : ElementHandler<IWindow, DuiWindow>
         if (window.Width > 0 && window.Height > 0)
         {
             platformView.SetSize((int)Math.Round(window.Width), (int)Math.Round(window.Height));
-            platformView.Root.SetBounds(new Rect(0, 0, window.Width, window.Height));
-            handler.ArrangeContent(window.Width, window.Height);
+            handler.ApplyClientLayout(platformView, (int)Math.Round(window.Width), (int)Math.Round(window.Height));
         }
     }
 }
