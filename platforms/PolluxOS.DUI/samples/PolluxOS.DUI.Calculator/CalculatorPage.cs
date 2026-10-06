@@ -31,7 +31,7 @@ public class CalculatorPage : ContentPage
         _display = new Label
         {
             Text = "0",
-            FontSize = 48,
+            FontSize = 44,
             TextColor = s_textColor,
             HorizontalTextAlignment = TextAlignment.End,
             VerticalTextAlignment = TextAlignment.Center,

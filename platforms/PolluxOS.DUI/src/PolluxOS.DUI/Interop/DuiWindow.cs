@@ -77,6 +77,13 @@ public sealed class DuiWindow : IDisposable
     /// its native backends send for a compositor-delivered pointer click. Lets a host or
     /// test verify input handling (including hit testing) without a pointing device.
     /// </summary>
+    /// <summary>Writes the client area to a PNG (macOS: in-process, no permission needed).</summary>
+    public bool TryCapturePng(string path)
+    {
+        ThrowIfDisposed();
+        return DuiNative.dui_shim_window_capture_png(_handle, path) != 0;
+    }
+
     public bool SimulateClick(int x, int y)
     {
         ThrowIfDisposed();

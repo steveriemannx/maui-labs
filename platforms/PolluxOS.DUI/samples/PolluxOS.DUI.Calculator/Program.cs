@@ -110,6 +110,10 @@ try
             if (probeSeconds > 0)
             {
                 Thread.Sleep(TimeSpan.FromSeconds(probeSeconds));
+                Console.WriteLine(duiWindow.TryCapturePng("calculator.png")
+                    ? "capture: calculator.png"
+                    : "capture: unavailable on this platform");
+
                 Console.WriteLine("Widget tree:");
                 Console.WriteLine(duiWindow.TryDumpXml() ?? "(dump unavailable)");
                 duiWindow.Close();

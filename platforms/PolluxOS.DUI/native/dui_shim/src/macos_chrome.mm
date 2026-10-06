@@ -15,6 +15,8 @@
 
 #import <Cocoa/Cocoa.h>
 
+#include <cstdlib>
+
 namespace {
 
 NSWindow* FindDuIWindow(const char* title)
@@ -46,22 +48,34 @@ void ApplySystemChrome(NSWindow* window, NSString* title)
         return;
     }
 
-    NSWindowStyleMask mask = [window styleMask];
-    mask |= NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-            NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
-    if ([window styleMask] != mask) {
-        [window setStyleMask:mask];
+    // Temporary isolation switch while tracking down a macOS text-rendering regression:
+    // bit 0 = buttons, bit 1 = title, bit 2 = style mask, bit 3 = autoresizing.
+    // Default (unset) = everything.
+    const char* modes = getenv("POLLUXOS_DUI_MAC_CHROME");
+    const int mode = modes != nullptr ? atoi(modes) : 15;
+
+    if ((mode & 4) != 0) {
+        NSWindowStyleMask mask = [window styleMask];
+        mask |= NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+                NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
+        if ([window styleMask] != mask) {
+            [window setStyleMask:mask];
+        }
     }
 
-    [[window standardWindowButton:NSWindowCloseButton] setHidden:NO];
-    [[window standardWindowButton:NSWindowMiniaturizeButton] setHidden:NO];
-    [[window standardWindowButton:NSWindowZoomButton] setHidden:NO];
+    if ((mode & 1) != 0) {
+        [[window standardWindowButton:NSWindowCloseButton] setHidden:NO];
+        [[window standardWindowButton:NSWindowMiniaturizeButton] setHidden:NO];
+        [[window standardWindowButton:NSWindowZoomButton] setHidden:NO];
+    }
 
     // dui also hides the title text; the bar itself stays transparent like dui made it, so
     // the host's content still shows through underneath.
-    window.titleVisibility = NSWindowTitleVisible;
-    if (title != nil) {
-        [window setTitle:title];
+    if ((mode & 2) != 0) {
+        window.titleVisibility = NSWindowTitleVisible;
+        if (title != nil) {
+            [window setTitle:title];
+        }
     }
 
     [window setHasShadow:YES];
@@ -69,7 +83,7 @@ void ApplySystemChrome(NSWindow* window, NSString* title)
     // Let dui's view follow window resizes. Mask only: assigning frames here would freeze
     // the view at whatever size it happens to have at this moment.
     NSView* contentView = window.contentView;
-    if (contentView != nil) {
+    if ((mode & 8) != 0 && contentView != nil) {
         for (NSView* subview in contentView.subviews) {
             subview.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         }
@@ -111,6 +125,44 @@ extern "C" void dui_shim_macos_show_system_chrome(void* nsWindow, const char* ti
     } else {
         dispatch_sync(dispatch_get_main_queue(), work);
     }
+}
+
+extern "C" int dui_shim_macos_capture_png(void* nsWindow, const char* path)
+{
+    if (nsWindow == nullptr || path == nullptr) {
+        return 0;
+    }
+
+    NSWindow* window = (__bridge NSWindow*)nsWindow;
+    __block int ok = 0;
+    void (^work)(void) = ^{
+        NSView* view = window.contentView;
+        if (view == nil) {
+            return;
+        }
+
+        // Renders the view hierarchy in-process: no screen-recording permission needed
+        // (unlike screencapture), which makes macOS verification possible from the host.
+        const NSRect bounds = view.bounds;
+        NSBitmapImageRep* rep = [view bitmapImageRepForCachingDisplayInRect:bounds];
+        if (rep == nil) {
+            return;
+        }
+
+        [view cacheDisplayInRect:bounds toBitmapImageRep:rep];
+        NSData* png = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+        if (png != nil) {
+            ok = [png writeToFile:[NSString stringWithUTF8String:path] atomically:YES] ? 1 : 0;
+        }
+    };
+
+    if ([NSThread isMainThread]) {
+        work();
+    } else {
+        dispatch_sync(dispatch_get_main_queue(), work);
+    }
+
+    return ok;
 }
 
 extern "C" int dui_shim_macos_describe_chrome(void* nsWindow, int* styleMask, int* buttonsHidden, int* titleVisible)

@@ -302,6 +302,7 @@ private:
 extern "C" void* dui_shim_macos_find_window(const char* title);
 extern "C" void dui_shim_macos_show_system_chrome(void* nsWindow, const char* title);
 extern "C" int dui_shim_macos_describe_chrome(void* nsWindow, int* styleMask, int* buttonsHidden, int* titleVisible);
+extern "C" int dui_shim_macos_capture_png(void* nsWindow, const char* path);
 
 // Restores the macOS title bar + traffic lights. Must run after ShowWindow: touching the
 // style mask while dui is still creating/sizing its view breaks that view's frame.
@@ -1307,6 +1308,35 @@ void dui_shim_widget_set_event_handler(dui_shim_widget* widget, int32_t event_id
         });
     });
     DUI_SHIM_GUARD_END()
+}
+
+int32_t dui_shim_window_capture_png(dui_shim_window* window, const char* path)
+{
+    DUI_SHIM_GUARD_BEGIN
+    if (window == nullptr || path == nullptr)
+    {
+        SetError("dui: null window or path");
+        return 0;
+    }
+
+#if defined(__APPLE__)
+    if (window->ns_window == nullptr)
+        window->ns_window = dui_shim_macos_find_window(window->title.c_str());
+
+    if (window->ns_window == nullptr)
+    {
+        SetError("dui: the AppKit window is not available yet");
+        return 0;
+    }
+
+    return dui_shim_macos_capture_png(window->ns_window, path);
+#else
+    // No in-process capture here: dui's ScreenCapture needs a presentation path that this
+    // build does not provide on Wayland (grim is used for evidence instead).
+    (void)path;
+    return 0;
+#endif
+    DUI_SHIM_GUARD_END(0)
 }
 
 int32_t dui_shim_window_simulate_click(dui_shim_window* window, int32_t x, int32_t y)

@@ -109,6 +109,10 @@ DUI_SHIM_EXPORT void dui_shim_window_set_size(dui_shim_window* window, int32_t w
  *  @return 1 on success, 0 if the size is not known yet (e.g. before dui_shim_run). */
 DUI_SHIM_EXPORT int32_t dui_shim_window_get_client_size(dui_shim_window* window, int32_t* width, int32_t* height);
 
+/** Writes the window's client area to a PNG. On macOS this renders the view hierarchy
+ *  in-process (so it works without screen-recording permission); elsewhere it reports 0. */
+DUI_SHIM_EXPORT int32_t dui_shim_window_capture_png(dui_shim_window* window, const char* path);
+
 /** Subscribes to client-area changes. The callback runs on the UI thread; call with a
  *  NULL callback to unsubscribe. */
 DUI_SHIM_EXPORT void dui_shim_window_set_size_handler(dui_shim_window* window, dui_shim_size_cb callback, void* user_data);

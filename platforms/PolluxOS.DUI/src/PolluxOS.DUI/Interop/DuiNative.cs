@@ -76,6 +76,10 @@ internal static partial class DuiNative
     [LibraryImport(LibraryName)]
     internal static partial int dui_shim_window_simulate_click(nint window, int x, int y);
 
+    /// <summary>Writes the client area to a PNG (macOS renders it in-process).</summary>
+    [LibraryImport(LibraryName, StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial int dui_shim_window_capture_png(nint window, string path);
+
     /// <summary>Subscribes to client-area changes (callback runs on the toolkit's UI
     /// thread); pass zero to unsubscribe.</summary>
     [LibraryImport(LibraryName)]
