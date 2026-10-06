@@ -745,8 +745,20 @@ int32_t dui_shim_window_get_client_size(dui_shim_window* window, int32_t* width,
     const bool read = RunOnUiThreadSync([&]() {
         ui::UiRect rc;
         window->window->GetClientRect(rc);
+
         client_width = rc.Width();
         client_height = rc.Height();
+
+        // The reported rect is the window surface. The host's container sits inside the
+        // decoration/shadow corner (WindowBase::GetShadowCorner is protected, but the
+        // toolkit has already laid the container out at that inset), so subtract it —
+        // otherwise the host overflows the window by the shadow margin.
+        if (window->root.control != nullptr)
+        {
+            const ui::UiRect rootPos = window->root.control->GetPos();
+            client_width -= rootPos.left * 2;
+            client_height -= rootPos.top * 2;
+        }
     });
 
     if (width != nullptr)
