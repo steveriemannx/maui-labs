@@ -312,7 +312,13 @@ void DuiHost::OnInit()
             if (!window->AttachBox(root))
                 SetAsyncError("dui: Window::AttachBox failed for window '" + handle->name + "'");
             else
+            {
+                // Track the container explicitly: Window::GetRoot() returns the shadow
+                // wrapper on some backends (a ShadowBox on Wayland), and hosts must
+                // parent to the container we attached, not to the decoration.
+                handle->root.control = root;
                 Trace("attached root Box to window '" + handle->name + "'");
+            }
         }
 
         if (handle->show_requested)
@@ -689,10 +695,11 @@ dui_shim_widget* dui_shim_window_root(dui_shim_window* window)
         return nullptr;
     // Always returns a usable handle: before OnInit() creates the native window the
     // control is null and resolves on the UI thread; children created against this
-    // handle are parented to the real root container once it exists.
+    // handle are parented to the container the shim attached.
     window->root.owner = window;
     window->root.parent = nullptr;
-    window->root.control = RootBox(window);
+    if (window->root.control == nullptr)
+        window->root.control = RootBox(window);
     return &window->root;
     DUI_SHIM_GUARD_END(nullptr)
 }
@@ -879,8 +886,10 @@ dui_shim_widget* dui_shim_widget_create(dui_shim_widget* parent, const char* cla
         }
 
         ui::Control* parent_control = widget->parent != nullptr ? widget->parent->control : nullptr;
+        if (parent_control == nullptr && widget->parent == &owner->root)
+            parent_control = owner->root.control; // the container the shim attached
         if (parent_control == nullptr)
-            parent_control = owner->window->GetRoot(); // pending parent = the window root
+            parent_control = owner->window->GetRoot(); // last resort: the toolkit's root
         Trace(std::string("  parent control=") + (parent_control != nullptr ? "ok" : "null"));
 
         auto* box = dynamic_cast<ui::Box*>(parent_control);
