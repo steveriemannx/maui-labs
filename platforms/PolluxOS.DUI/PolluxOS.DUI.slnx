@@ -5,6 +5,7 @@
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/PolluxOS.DUI.Sample/PolluxOS.DUI.Sample.csproj" />
+    <Project Path="samples/PolluxOS.DUI.Calculator/PolluxOS.DUI.Calculator.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/PolluxOS.DUI.Tests/PolluxOS.DUI.Tests.csproj" />

@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Standalone SDK host (see Directory.Build.props): builds with a bare .NET SDK so it
+         runs on polluxos/FreeBSD as well as macOS, using the platform's libdui_shim. -->
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <UseMaui>false</UseMaui>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>PolluxOS.DUI.Calculator</RootNamespace>
+    <AssemblyName>PolluxOS.DUI.Calculator</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PolluxOSDuiNativeDir Condition="'$(PolluxOSDuiNativeDir)' == ''">$(MSBuildThisFileDirectory)../../artifacts/native</PolluxOSDuiNativeDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.41" />
+    <PackageReference Include="Microsoft.Maui.Controls.Core" Version="10.0.41" />
+    <PackageReference Include="Microsoft.Maui.Core" Version="10.0.41" />
+    <PackageReference Include="Microsoft.Maui.Essentials" Version="10.0.41" />
+    <PackageReference Include="Microsoft.Maui.Graphics" Version="10.0.41" />
+  </ItemGroup>
+
+  <!-- Compile the shipping backend + Essentials sources: the app runs the real code. -->
+  <ItemGroup>
+    <Compile Include="../../src/PolluxOS.DUI/**/*.cs" LinkBase="PolluxOS.DUI" />
+    <Compile Include="../../src/PolluxOS.DUI.Essentials/**/*.cs" LinkBase="PolluxOS.DUI.Essentials" />
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(PolluxOSDuiNativeDir)')">
+    <None Include="$(PolluxOSDuiNativeDir)/*.so" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
+    <None Include="$(PolluxOSDuiNativeDir)/*.dylib" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
+    <None Include="$(PolluxOSDuiNativeDir)/*.dll" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>

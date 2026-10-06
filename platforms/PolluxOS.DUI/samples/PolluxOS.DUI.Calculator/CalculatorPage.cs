@@ -1,0 +1,169 @@
+using Microsoft.Maui.Graphics;
+
+namespace PolluxOS.DUI.Calculator;
+
+/// <summary>
+/// A four-function calculator built from ordinary MAUI controls: a <see cref="Grid"/> of
+/// <see cref="Button"/>s plus a display <see cref="Label"/>. It exercises what the DUI
+/// backend has to get right — grid layout, button text/colours, and clicks travelling
+/// from a DUI control back into managed code.
+/// </summary>
+public class CalculatorPage : ContentPage
+{
+    static readonly Color s_digitBackground = Color.FromArgb("#FF2E3238");
+    static readonly Color s_operatorBackground = Color.FromArgb("#FFFF9F0A");
+    static readonly Color s_actionBackground = Color.FromArgb("#FFA5A5A5");
+    static readonly Color s_textColor = Colors.White;
+
+    readonly Label _display;
+    double _accumulator;
+    string? _pendingOperator;
+    bool _startNewEntry = true;
+
+    public CalculatorPage()
+    {
+        _display = new Label
+        {
+            Text = "0",
+            FontSize = 40,
+            TextColor = Colors.White,
+            HorizontalTextAlignment = TextAlignment.End,
+            AutomationId = "DisplayLabel",
+        };
+
+        var layout = new Grid
+        {
+            Padding = 20,
+            RowSpacing = 10,
+            ColumnSpacing = 10,
+            BackgroundColor = Color.FromArgb("#FF1C1F24"),
+        };
+
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        for (var i = 0; i < 4; i++)
+            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Star });
+
+        for (var i = 0; i < 4; i++)
+            layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Star });
+
+        layout.Add(_display, 0, 0);
+        Grid.SetColumnSpan(_display, 4);
+
+        AddButton(layout, "7", 1, 0, s_digitBackground);
+        AddButton(layout, "8", 1, 1, s_digitBackground);
+        AddButton(layout, "9", 1, 2, s_digitBackground);
+        AddButton(layout, "÷", 1, 3, s_operatorBackground);
+
+        AddButton(layout, "4", 2, 0, s_digitBackground);
+        AddButton(layout, "5", 2, 1, s_digitBackground);
+        AddButton(layout, "6", 2, 2, s_digitBackground);
+        AddButton(layout, "×", 2, 3, s_operatorBackground);
+
+        AddButton(layout, "1", 3, 0, s_digitBackground);
+        AddButton(layout, "2", 3, 1, s_digitBackground);
+        AddButton(layout, "3", 3, 2, s_digitBackground);
+        AddButton(layout, "−", 3, 3, s_operatorBackground);
+
+        AddButton(layout, "C", 4, 0, s_actionBackground, Colors.Black, Clear);
+        AddButton(layout, "0", 4, 1, s_digitBackground);
+        AddButton(layout, "=", 4, 2, s_operatorBackground, Colors.White, Evaluate);
+        AddButton(layout, "+", 4, 3, s_operatorBackground);
+
+        Content = layout;
+    }
+
+    void AddButton(Grid grid, string text, int row, int column, Color background,
+                   Color? textColor = null, Action? onClick = null)
+    {
+        var button = new Button
+        {
+            Text = text,
+            FontSize = 24,
+            BackgroundColor = background,
+            TextColor = textColor ?? s_textColor,
+            AutomationId = text switch
+            {
+                "+" => "BtnAdd",
+                "−" => "BtnSubtract",
+                "×" => "BtnMultiply",
+                "÷" => "BtnDivide",
+                "=" => "BtnEquals",
+                "C" => "BtnClear",
+                _ => $"Btn{text}",
+            },
+        };
+
+        button.Clicked += (_, _) =>
+        {
+            if (onClick is not null)
+            {
+                onClick();
+                return;
+            }
+
+            if (text.Length == 1 && char.IsDigit(text[0]))
+                AppendDigit(text[0]);
+            else
+                SetOperator(text);
+        };
+
+        // Grid.Add takes (view, column, row).
+        grid.Add(button, column, row);
+    }
+
+    void AppendDigit(char digit)
+    {
+        var current = _startNewEntry ? string.Empty : _display.Text ?? string.Empty;
+        if (current == "0")
+            current = string.Empty;
+
+        current += digit;
+        _display.Text = current.Length == 0 ? "0" : current;
+        _startNewEntry = false;
+    }
+
+    void SetOperator(string op)
+    {
+        if (!_startNewEntry && _pendingOperator is not null)
+            Evaluate();
+
+        _accumulator = Parse(_display.Text);
+        _pendingOperator = op;
+        _startNewEntry = true;
+    }
+
+    void Evaluate()
+    {
+        if (_pendingOperator is null)
+            return;
+
+        var operand = Parse(_display.Text);
+        var result = _pendingOperator switch
+        {
+            "+" => _accumulator + operand,
+            "−" => _accumulator - operand,
+            "×" => _accumulator * operand,
+            "÷" => operand == 0 ? double.NaN : _accumulator / operand,
+            _ => operand,
+        };
+
+        _display.Text = Format(result);
+        _accumulator = result;
+        _pendingOperator = null;
+        _startNewEntry = true;
+    }
+
+    void Clear()
+    {
+        _display.Text = "0";
+        _accumulator = 0;
+        _pendingOperator = null;
+        _startNewEntry = true;
+    }
+
+    static double Parse(string? text)
+        => double.TryParse(text, out var value) ? value : 0;
+
+    static string Format(double value)
+        => double.IsNaN(value) ? "Error" : value.ToString("0.########");
+}

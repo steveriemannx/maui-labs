@@ -1,0 +1,11 @@
+<Project>
+  <!--
+    Shadowing the repository's Directory.Packages.props: central package management
+    would require a PackageVersion entry in the repo's props for every package this
+    standalone test uses (and the repo's own NuGet.config is not reachable from the
+    polluxos box). Disabling it here keeps the project buildable with a bare SDK.
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>
