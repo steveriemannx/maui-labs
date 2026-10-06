@@ -348,6 +348,16 @@ void DuiHost::OnInit()
             window->UpdateWindow();
             window->ShowWindow(ui::kSW_SHOW_NORMAL);
             handle->shown = true;
+
+            // Some backends (Wayland) only honour a resize once the surface is mapped, so
+            // re-apply the requested size here; without it the window keeps DUI's default
+            // 800x600 and the host's layout ends up in a corner.
+            if (handle->width > 0 && handle->height > 0)
+            {
+                window->SetWindowSize(handle->width, handle->height);
+                window->InvalidateAll();
+                window->UpdateWindow();
+            }
         }
     }
 
@@ -669,6 +679,14 @@ void dui_shim_window_show(dui_shim_window* window, int32_t show)
             window->window->UpdateWindow();
             window->window->ShowWindow(ui::kSW_SHOW_NORMAL);
             window->shown = true;
+
+            // See OnInit: apply the requested size after the surface is mapped.
+            if (window->width > 0 && window->height > 0)
+            {
+                window->window->SetWindowSize(window->width, window->height);
+                window->window->InvalidateAll();
+                window->window->UpdateWindow();
+            }
         }
         else if (show == 0 && window->shown)
         {
