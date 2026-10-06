@@ -92,17 +92,22 @@ DUI_SHIM_EXPORT void dui_shim_window_set_title(dui_shim_window* window, const ch
 DUI_SHIM_EXPORT void dui_shim_window_set_size(dui_shim_window* window, int32_t width_dip, int32_t height_dip);
 DUI_SHIM_EXPORT void dui_shim_window_get_bounds(dui_shim_window* window, double* x_dip, double* y_dip, double* width_dip, double* height_dip);
 
-/** Root container widget of the window (owned by the window; do not destroy). */
+/** Root container widget of the window (owned by the window; do not destroy).
+ *  Valid before the message loop starts: the handle exists immediately and resolves
+ *  to the real container once the toolkit has created the window, so a host can
+ *  build its widget tree up front and then call dui_shim_run(). */
 DUI_SHIM_EXPORT dui_shim_widget* dui_shim_window_root(dui_shim_window* window);
 
-/** Find a widget by name (`name` attribute / MAUI AutomationId). NULL when absent. */
+/** Find a widget by name (`name` attribute / MAUI AutomationId). NULL when absent
+ *  or when the window does not exist yet. Runs on the UI thread; do not call from
+ *  the UI thread itself. */
 DUI_SHIM_EXPORT dui_shim_widget* dui_shim_window_find_widget(dui_shim_window* window, const char* name_utf8);
 
 /** Window callback sink: receives DUI_SHIM_EVENT_CLOSED etc. */
 DUI_SHIM_EXPORT void dui_shim_window_set_event_handler(dui_shim_window* window, dui_shim_event_cb callback, void* user_data);
 
-/** XML snapshot of the window's widget tree (UTF-8, `*out_len` receives the length).
- *  Intended for automation/inspection (DevFlow-style tooling), not for rendering.
+/** XML snapshot of the window's widget tree (UTF-8, `*out_len` receives the length). *  Intended for automation/inspection (DevFlow-style tooling), not for rendering.
+ *  The walk runs on the UI thread; do not call this from the UI thread itself.
  *  Returns NULL when the tree cannot be serialized. Caller frees via
  *  dui_shim_string_free. */
 DUI_SHIM_EXPORT char* dui_shim_window_dump_xml(dui_shim_window* window, size_t* out_len);
@@ -110,11 +115,22 @@ DUI_SHIM_EXPORT char* dui_shim_window_dump_xml(dui_shim_window* window, size_t* 
 /** Free a string returned by this ABI. */
 DUI_SHIM_EXPORT void dui_shim_string_free(char* text);
 
+/** Capture the window into a binary PPM (P6) file at `path_utf8` — 24-bit RGB,
+ *  alpha flattened over black. DUI renders through Skia, so this is the toolkit's
+ *  own screen capture (ScreenCapture::CaptureBitmap) rather than a desktop grab.
+ *  Runs on the UI thread; do not call from the UI thread itself.
+ *  Returns 0 on success. */
+DUI_SHIM_EXPORT int32_t dui_shim_window_capture_ppm(dui_shim_window* window, const char* path_utf8);
+
 /* ------------------------------------------------------------------- widget */
 
 /** Create a widget of `class_name_utf8` (DUI control class, e.g. "Label", "Button",
  *  "Box", "VBox", "HBox") as a child of `parent`. `name_utf8` may be NULL; when
- *  provided it becomes the widget's name so FindWidget/AutomationId work. */
+ *  provided it becomes the widget's name so FindWidget/AutomationId work.
+ *
+ *  The returned handle is valid immediately; the DUI control itself is created on
+ *  the UI thread (queued commands run FIFO, so a parent always resolves before its
+ *  children). A NULL return means the request could not even be queued. */
 DUI_SHIM_EXPORT dui_shim_widget* dui_shim_widget_create(dui_shim_widget* parent, const char* class_name_utf8, const char* name_utf8);
 
 /** Detach and destroy a widget created by this ABI. */

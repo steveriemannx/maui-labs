@@ -10,7 +10,7 @@ cmake_minimum_required(VERSION 3.20)
 #         -DCMAKE_PREFIX_PATH=<dui-install-prefix>
 #   cmake --build native/dui_shim/build
 
-project(dui_shim VERSION 0.1.0 LANGUAGES CXX)
+project(dui_shim VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -87,3 +87,20 @@ install(TARGETS dui_shim
   RUNTIME DESTINATION bin
   ARCHIVE DESTINATION lib)
 install(FILES include/dui_shim.h DESTINATION include)
+
+# ABI smoke test: headless checks always, plus a real window when a display is
+# available (Xvfb, a Wayland desktop, or macOS).
+#   cmake --build <build-dir> --target dui_shim_abi_smoke
+#   <build-dir>/dui_shim_abi_smoke <resources-dir> [seconds]
+option(DUI_SHIM_BUILD_TESTS "Build the dui_shim ABI smoke test" ON)
+if(DUI_SHIM_BUILD_TESTS)
+  add_executable(dui_shim_abi_smoke tests/abi_smoke.c)
+  target_link_libraries(dui_shim_abi_smoke PRIVATE dui_shim)
+  if(UNIX AND NOT APPLE)
+    find_package(Threads REQUIRED)
+    target_link_libraries(dui_shim_abi_smoke PRIVATE Threads::Threads)
+  endif()
+  set_target_properties(dui_shim_abi_smoke PROPERTIES
+    BUILD_RPATH "$<TARGET_FILE_DIR:dui_shim>"
+    INSTALL_RPATH "$<TARGET_FILE_DIR:dui_shim>")
+endif()

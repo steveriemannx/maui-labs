@@ -122,9 +122,17 @@ public sealed class DuiWindow : IDisposable
         }
     }
 
-    public void Dispose()
+    /// <summary>Captures the window to a binary PPM (P6) file using DUI's own
+    /// renderer capture. Useful where the windowing system cannot be grabbed
+    /// (headless Xvfb, Wayland) — e.g. CI evidence.</summary>
+    public bool TryCapturePpm(string path)
     {
-        if (_disposed)
+        ThrowIfDisposed();
+        return DuiNative.dui_shim_window_capture_ppm(_handle, path) == 0;
+    }
+
+    public void Dispose()
+    {        if (_disposed)
             return;
         _disposed = true;
 

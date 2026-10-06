@@ -73,6 +73,9 @@ internal static partial class DuiNative
     [LibraryImport(LibraryName)]
     internal static partial nint dui_shim_window_dump_xml(nint window, out nuint length);
 
+    [LibraryImport(LibraryName, StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial int dui_shim_window_capture_ppm(nint window, string path);
+
     [LibraryImport(LibraryName)]
     internal static partial void dui_shim_string_free(nint text);
 

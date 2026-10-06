@@ -33,14 +33,21 @@
 
 #include "dui/dui.h"
 
+// Screen capture (dui_shim_window_capture_ppm) is not part of the dui.h umbrella.
+#include "dui/Utils/ScreenCapture.h"
+
 #if defined(__APPLE__)
 // Platform message loops are not part of the dui.h umbrella: each one is guarded
 // by its DUI_BUILD_FOR_* macro (defined in dui_config.h), so include it explicitly.
 #include "dui/Core/MessageLoop_MacOS.h"
 #endif
 
+#include <cstdio>
+#include <cstdlib>
 #include <deque>
 #include <functional>
+#include <future>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -56,9 +63,39 @@ constexpr const char* kVersion = "0.1.0";
 // DUI uses UTF-8 std::string everywhere (include/dui/dui_string.h).
 thread_local std::string g_last_error;
 
+// Errors raised by queued (deferred) commands run on the UI thread, where the
+// caller's thread-local error is invisible. Kept here so dui_shim_last_error() can
+// report why a handle (e.g. a widget created before the loop started) never
+// materialized.
+std::mutex g_async_error_mutex;
+std::string g_async_error;
+
 void SetError(const std::string& message)
 {
     g_last_error = message;
+}
+
+/// Opt-in tracing (`DUI_SHIM_DEBUG=1`): the deferred commands run on the UI thread,
+/// so their diagnostics have to be observable somehow while bringing a platform up.
+bool DebugEnabled()
+{
+    static const bool enabled = std::getenv("DUI_SHIM_DEBUG") != nullptr;
+    return enabled;
+}
+
+void Trace(const std::string& message)
+{
+    if (DebugEnabled())
+        std::fprintf(stderr, "[dui_shim] %s\n", message.c_str());
+}
+
+/// Reports a failure that happened on the UI thread: visible to the UI thread and
+/// to every later dui_shim_last_error() caller on any thread.
+void SetAsyncError(const std::string& message)
+{
+    g_last_error = message;
+    std::lock_guard<std::mutex> lock(g_async_error_mutex);
+    g_async_error = message;
 }
 
 void ClearError()
@@ -125,8 +162,15 @@ private:
 
 struct dui_shim_widget
 {
+    // Resolved on the UI thread. nullptr means "queued, not created yet": hosts
+    // (and the MAUI backend in particular) build their widget tree before the
+    // message loop starts, so handles must exist before the DUI controls do.
     ui::Control* control = nullptr;
     dui_shim_window* owner = nullptr;
+    dui_shim_widget* parent = nullptr;
+    std::string class_name;
+    std::string name;
+    bool destroyed = false;
 };
 
 struct dui_shim_window
@@ -182,6 +226,20 @@ public:
 
     void AddWindow(dui_shim_window* handle) { m_windows.push_back(handle); }
 
+    /// Closes every tracked window (runs on the UI thread). Closing the last one
+    /// ends the loop: every window is created with PostQuitMsgWhenClosed(true).
+    void CloseAllWindows()
+    {
+        for (dui_shim_window* window : m_windows)
+        {
+            if (window->window != nullptr)
+            {
+                window->window->CloseWnd();
+                window->window = nullptr; // the toolkit deletes it on the final message
+            }
+        }
+    }
+
     void RemoveWindow(dui_shim_window* handle)
     {
         for (auto it = m_windows.begin(); it != m_windows.end(); ++it)
@@ -232,13 +290,30 @@ void DuiHost::OnInit()
 
         if (!window->CreateWnd(nullptr, ui::WindowCreateParam(handle->title, true)))
         {
-            SetError("dui: WindowImplBase::CreateWnd failed for window '" + handle->name + "'");
+            SetAsyncError("dui: WindowImplBase::CreateWnd failed for window '" + handle->name + "'");
             // Do not delete: the toolkit owns window lifetime.
             continue;
         }
 
         window->PostQuitMsgWhenClosed(true);
         handle->window = window;
+
+        // A pure-code window has no root container until one is attached: the XML
+        // path creates it through WindowBuilder, while the code path expects the host
+        // to call AttachBox (see the sequence documented in include/dui/Core/Window.h).
+        // Hosts parent their tree to dui_shim_window_root(), so the bridge attaches a
+        // vertical container; MAUI positions children explicitly.
+        if (window->GetRoot() == nullptr)
+        {
+            // Plain Box, not VBox: MAUI computes every child's rectangle itself, so the
+            // root must not run a layout that would override SetPos/SetFixedWidth.
+            auto* root = new ui::Box(window);
+            root->SetName("maui-root");
+            if (!window->AttachBox(root))
+                SetAsyncError("dui: Window::AttachBox failed for window '" + handle->name + "'");
+            else
+                Trace("attached root Box to window '" + handle->name + "'");
+        }
 
         if (handle->show_requested)
         {
@@ -273,6 +348,31 @@ void OnUiThread(std::function<void()> action)
     Host().Commands().Post(std::move(action));
 }
 
+// Runs `action` on the UI thread and waits for it. For read paths that must touch
+// the toolkit from a host thread (control lookup, tree dump). Must NOT be called
+// from the UI thread itself — it would deadlock on its own queue.
+void RunOnUiThreadSync(std::function<void()> action)
+{
+    std::promise<void> done;
+    auto future = done.get_future();
+    OnUiThread([&action, &done]() {
+        try
+        {
+            action();
+        }
+        catch (const std::exception& ex)
+        {
+            SetAsyncError(std::string("dui: ") + ex.what());
+        }
+        catch (...)
+        {
+            SetAsyncError("dui: unknown C++ exception");
+        }
+        done.set_value();
+    });
+    future.wait();
+}
+
 ui::Box* RootBox(dui_shim_window* handle)
 {
     if (handle == nullptr || handle->window == nullptr)
@@ -291,7 +391,6 @@ dui_shim_widget* WrapWidget(dui_shim_window* owner, ui::Control* control)
         owner->owned_widgets.push_back(widget);
     return widget;
 }
-
 void UnwrapWidget(dui_shim_widget* widget)
 {
     if (widget == nullptr || widget->owner == nullptr)
@@ -314,8 +413,28 @@ void UnwrapWidget(dui_shim_widget* widget)
 // the headers do expose: Box::GetItemCount/GetItemAt, PlaceHolder::GetType/GetName,
 // Control::GetPos, PlaceHolder::IsVisible/IsEnabled.
 
-void AppendXmlAttribute(std::string& out, const char* name, const std::string& value)
+// --- control factory --------------------------------------------------------
+//
+// DUI's pure-code path builds controls with `new T(window)` (see ui::Create<T> in
+// include/dui/Utils/UiBuilder.h). Window::CreateControl is a virtual hook that the
+// base class leaves returning nullptr — it exists for WindowBuilder's XML path
+// (src/Core/Window.cpp:228) — so the bridge maps the DUI_CTR_* class names from
+// include/dui/dui_defs.h to the concrete types itself.
+ui::Control* InstantiateControl(ui::Window* window, const std::string& class_name)
 {
+    if (class_name == DUI_CTR_LABEL)    return new ui::Label(window);
+    if (class_name == DUI_CTR_BUTTON)   return new ui::Button(window);
+    if (class_name == DUI_CTR_CHECKBOX) return new ui::CheckBox(window);
+    if (class_name == DUI_CTR_OPTION)   return new ui::Option(window);
+    if (class_name == DUI_CTR_PROGRESS) return new ui::Progress(window);
+    if (class_name == DUI_CTR_SLIDER)   return new ui::Slider(window);
+    if (class_name == DUI_CTR_BOX)      return new ui::Box(window);
+    if (class_name == DUI_CTR_VBOX)     return new ui::VBox(window);
+    if (class_name == DUI_CTR_HBOX)     return new ui::HBox(window);
+    return nullptr;
+}
+
+void AppendXmlAttribute(std::string& out, const char* name, const std::string& value){
     out += ' ';
     out += name;
     out += "=\"";
@@ -347,6 +466,15 @@ void WalkControl(ui::Control* control, int depth, std::string& out)
                                           std::to_string(rect.right - rect.left) + "," + std::to_string(rect.bottom - rect.top));
     AppendXmlAttribute(out, "visible", control->IsVisible() ? "true" : "false");
     AppendXmlAttribute(out, "enabled", control->IsEnabled() ? "true" : "false");
+
+    // Control has no GetText — text lives on the LabelOwner interface (Label/Button/
+    // RichEdit/…), so read it through the interface when the control implements it.
+    if (auto* label = dynamic_cast<ui::LabelOwner*>(control); label != nullptr)
+    {
+        const std::string text = label->GetText();
+        if (!text.empty())
+            AppendXmlAttribute(out, "text", text);
+    }
 
     auto* box = dynamic_cast<ui::Box*>(control);
     if (box == nullptr || box->GetItemCount() == 0)
@@ -404,20 +532,29 @@ int32_t dui_shim_run(void)
 void dui_shim_post_quit(int32_t exit_code)
 {
     DUI_SHIM_GUARD_BEGIN
+    // Portable quit: closing every window ends the loop, because the shim creates
+    // each window with Window::PostQuitMsgWhenClosed(true). DUI's platform loops
+    // expose no portable PostQuitMsg (Wayland/X11 only offer RunUserLoop and
+    // PostUserEvent), so on macOS we additionally post the native quit.
 #if defined(__APPLE__)
-    // DUI's per-window quit is Window::PostQuitMsgWhenClosed; a cross-thread quit
-    // goes through the platform loop (MessageLoop_MacOS.h:83).
     ui::MessageLoop_MacOS::PostQuitMsg(exit_code);
 #else
     (void)exit_code;
-    SetError("dui: dui_shim_post_quit is only wired for the macOS message loop");
 #endif
+    OnUiThread([]() { Host().CloseAllWindows(); });
     DUI_SHIM_GUARD_END()
 }
 
 const char* dui_shim_last_error(void)
 {
-    return g_last_error.c_str();
+    if (!g_last_error.empty())
+        return g_last_error.c_str();
+
+    // Fall back to the last error reported by a deferred (UI-thread) command.
+    thread_local std::string s_async_copy;
+    std::lock_guard<std::mutex> lock(g_async_error_mutex);
+    s_async_copy = g_async_error;
+    return s_async_copy.c_str();
 }
 
 const char* dui_shim_version(void)
@@ -550,11 +687,12 @@ dui_shim_widget* dui_shim_window_root(dui_shim_window* window)
     DUI_SHIM_GUARD_BEGIN
     if (window == nullptr)
         return nullptr;
-    ui::Box* root = RootBox(window);
-    if (root == nullptr)
-        return nullptr;
-    window->root.control = root;
+    // Always returns a usable handle: before OnInit() creates the native window the
+    // control is null and resolves on the UI thread; children created against this
+    // handle are parented to the real root container once it exists.
     window->root.owner = window;
+    window->root.parent = nullptr;
+    window->root.control = RootBox(window);
     return &window->root;
     DUI_SHIM_GUARD_END(nullptr)
 }
@@ -564,7 +702,14 @@ dui_shim_widget* dui_shim_window_find_widget(dui_shim_window* window, const char
     DUI_SHIM_GUARD_BEGIN
     if (window == nullptr || window->window == nullptr)
         return nullptr;
-    return WrapWidget(window, window->window->FindControl(Utf8(name_utf8)));
+    // Control lookup walks the toolkit tree, so it runs on the UI thread.
+    const std::string name = Utf8(name_utf8);
+    ui::Control* found = nullptr;
+    RunOnUiThreadSync([&]() {
+        if (window->window != nullptr)
+            found = window->window->FindControl(name);
+    });
+    return WrapWidget(window, found);
     DUI_SHIM_GUARD_END(nullptr)
 }
 
@@ -583,18 +728,33 @@ char* dui_shim_window_dump_xml(dui_shim_window* window, size_t* out_len)
     DUI_SHIM_GUARD_BEGIN
     if (out_len != nullptr)
         *out_len = 0;
-    if (window == nullptr || window->window == nullptr)
+    if (window == nullptr)
     {
-        SetError("dui: window is not created yet");
+        SetError("dui: no window");
         return nullptr;
     }
 
-    std::string xml = "<window";
-    AppendXmlAttribute(xml, "name", window->name);
-    AppendXmlAttribute(xml, "title", window->title);
-    xml += ">\n";
-    WalkControl(window->window->GetRoot(), 1, xml);
-    xml += "</window>\n";
+    // The walk touches toolkit state, so it happens on the UI thread.
+    std::string xml;
+    bool built = false;
+    RunOnUiThreadSync([&]() {
+        if (window->window == nullptr)
+        {
+            SetError("dui: window is not created yet");
+            return;
+        }
+
+        xml = "<window";
+        AppendXmlAttribute(xml, "name", window->name);
+        AppendXmlAttribute(xml, "title", window->title);
+        xml += ">\n";
+        WalkControl(window->window->GetRoot(), 1, xml);
+        xml += "</window>\n";
+        built = true;
+    });
+
+    if (!built)
+        return nullptr;
 
     auto* buffer = new char[xml.size() + 1];
     std::copy(xml.begin(), xml.end(), buffer);
@@ -610,6 +770,80 @@ void dui_shim_string_free(char* text)
     delete[] text;
 }
 
+int32_t dui_shim_window_capture_ppm(dui_shim_window* window, const char* path_utf8)
+{
+    DUI_SHIM_GUARD_BEGIN
+    if (window == nullptr || path_utf8 == nullptr)
+    {
+        SetError("dui: capture needs a window and a path");
+        return 1;
+    }
+
+    const std::string path = Utf8(path_utf8);
+    int32_t result = 1;
+
+    // Capture touches the toolkit's render state, so it runs on the UI thread.
+    RunOnUiThreadSync([&]() {
+        if (window->window == nullptr)
+        {
+            SetAsyncError("dui: capture: the window is not created yet");
+            return;
+        }
+
+        std::shared_ptr<ui::IBitmap> bitmap = ui::ScreenCapture::CaptureBitmap(window->window);
+        if (!bitmap)
+        {
+            SetAsyncError("dui: ScreenCapture::CaptureBitmap returned null");
+            return;
+        }
+
+        const uint32_t width = bitmap->GetWidth();
+        const uint32_t height = bitmap->GetHeight();
+        void* pixels = bitmap->LockPixelBits();
+        if (pixels == nullptr || width == 0 || height == 0)
+        {
+            if (pixels != nullptr)
+                bitmap->UnLockPixelBits();
+            SetAsyncError("dui: capture: the bitmap has no pixels");
+            return;
+        }
+
+        std::FILE* file = std::fopen(path.c_str(), "wb");
+        if (file == nullptr)
+        {
+            bitmap->UnLockPixelBits();
+            SetAsyncError("dui: capture: cannot open '" + path + "'");
+            return;
+        }
+
+        std::fprintf(file, "P6\n%u %u\n255\n", width, height);
+
+        // Skia N32 on little-endian: BGRA, premultiplied. Flatten alpha onto black.
+        const uint8_t* source = static_cast<const uint8_t*>(pixels);
+        std::vector<uint8_t> row(static_cast<size_t>(width) * 3);
+        for (uint32_t y = 0; y < height; ++y)
+        {
+            const uint8_t* line = source + static_cast<size_t>(y) * width * 4;
+            for (uint32_t x = 0; x < width; ++x)
+            {
+                const uint8_t a = line[x * 4 + 3];
+                row[x * 3 + 0] = static_cast<uint8_t>(a == 0 ? 0 : (line[x * 4 + 2] * 255) / a);
+                row[x * 3 + 1] = static_cast<uint8_t>(a == 0 ? 0 : (line[x * 4 + 1] * 255) / a);
+                row[x * 3 + 2] = static_cast<uint8_t>(a == 0 ? 0 : (line[x * 4 + 0] * 255) / a);
+            }
+            std::fwrite(row.data(), 1, row.size(), file);
+        }
+
+        std::fclose(file);
+        bitmap->UnLockPixelBits();
+        Trace("captured " + std::to_string(width) + "x" + std::to_string(height) + " -> " + path);
+        result = 0;
+    });
+
+    return result;
+    DUI_SHIM_GUARD_END(1)
+}
+
 // ---------------------------------------------------------------------------
 // Widgets
 // ---------------------------------------------------------------------------
@@ -618,35 +852,68 @@ dui_shim_widget* dui_shim_widget_create(dui_shim_widget* parent, const char* cla
 {
     DUI_SHIM_GUARD_BEGIN
     ClearError();
-    if (parent == nullptr || parent->control == nullptr || parent->owner == nullptr || parent->owner->window == nullptr)
+    if (parent == nullptr)
     {
-        SetError("dui: widget_create needs a parent inside a created window");
+        SetError("dui: widget_create needs a parent widget");
         return nullptr;
     }
 
-    const std::string class_name = Utf8(class_name_utf8);
-    const std::string name = Utf8(name_utf8);
+    // Handle first, control later: hosts build the tree before the message loop
+    // starts, so the DUI control is created from the UI-thread queue. Commands run
+    // FIFO, so a parent always resolves before its children.
+    auto* widget = new dui_shim_widget();
+    widget->parent = parent;
+    widget->owner = parent->owner;
+    widget->class_name = Utf8(class_name_utf8);
+    widget->name = Utf8(name_utf8);
+    if (widget->owner != nullptr)
+        widget->owner->owned_widgets.push_back(widget);
 
-    // Window::CreateControl instantiates a control by its DUI class name
-    // (the DUI_CTR_* values in include/dui/dui_defs.h).
-    ui::Control* control = parent->owner->window->CreateControl(class_name);
-    if (control == nullptr)
-    {
-        SetError("dui: could not create control of class '" + class_name + "'");
-        return nullptr;
-    }
+    OnUiThread([widget]() {
+        dui_shim_window* owner = widget->owner;
+        Trace("create widget class='" + widget->class_name + "' name='" + widget->name + "'");
+        if (owner == nullptr || owner->window == nullptr)
+        {
+            SetAsyncError("dui: widget_create: the window does not exist yet");
+            return;
+        }
 
-    if (!name.empty())
-        control->SetName(name);
+        ui::Control* parent_control = widget->parent != nullptr ? widget->parent->control : nullptr;
+        if (parent_control == nullptr)
+            parent_control = owner->window->GetRoot(); // pending parent = the window root
+        Trace(std::string("  parent control=") + (parent_control != nullptr ? "ok" : "null"));
 
-    auto* box = dynamic_cast<ui::Box*>(parent->control);
-    if (box == nullptr || !box->AddItem(control))
-    {
-        SetError("dui: parent control is not a container; cannot add '" + class_name + "'");
-        return nullptr;
-    }
+        auto* box = dynamic_cast<ui::Box*>(parent_control);
+        if (box == nullptr)
+        {
+            SetAsyncError("dui: widget_create: parent is not a container control");
+            return;
+        }
+        Trace(std::string("  box items before=") + std::to_string(box->GetItemCount()));
 
-    return WrapWidget(parent->owner, control);
+        ui::Control* control = InstantiateControl(owner->window, widget->class_name);
+        if (control == nullptr)
+        {
+            SetAsyncError("dui: unknown control class '" + widget->class_name +
+                          "' (add it to InstantiateControl)");
+            return;
+        }
+        Trace(std::string("  CreateControl -> type='") + control->GetType() + "'");
+
+        if (!widget->name.empty())
+            control->SetName(widget->name);
+
+        if (!box->AddItem(control))
+        {
+            SetAsyncError("dui: widget_create: AddItem failed for '" + widget->class_name + "'");
+            return;
+        }
+
+        Trace(std::string("  AddItem ok, box items now=") + std::to_string(box->GetItemCount()));
+        widget->control = control;
+    });
+
+    return widget;
     DUI_SHIM_GUARD_END(nullptr)
 }
 
@@ -655,39 +922,58 @@ void dui_shim_widget_destroy(dui_shim_widget* widget)
     DUI_SHIM_GUARD_BEGIN
     if (widget == nullptr)
         return;
-    ui::Control* control = widget->control;
-    dui_shim_window* owner = widget->owner;
-    UnwrapWidget(widget);
-    widget->control = nullptr;
-    delete widget;
+    widget->destroyed = true;
 
-    if (control != nullptr && owner != nullptr)
-    {
-        OnUiThread([control, owner]() {
+    // Removal happens on the UI thread; the handle itself is freed there too so a
+    // queued operation cannot touch a dangling pointer.
+    OnUiThread([widget]() {
+        ui::Control* control = widget->control;
+        dui_shim_window* owner = widget->owner;
+        if (control != nullptr)
+        {
             if (auto* parent = control->GetParent())
                 parent->RemoveItem(control);
             // Controls are deleted by the window, never by the shim.
-            if (owner->window != nullptr)
+            if (owner != nullptr && owner->window != nullptr)
                 owner->window->RequestDeleteControl(control);
-        });
-    }
+        }
+        UnwrapWidget(widget);
+        delete widget;
+    });
     DUI_SHIM_GUARD_END()
 }
 
 void dui_shim_widget_set_bounds(dui_shim_widget* widget, double x_dip, double y_dip, double width_dip, double height_dip)
 {
     DUI_SHIM_GUARD_BEGIN
-    if (widget == nullptr || widget->control == nullptr)
+    if (widget == nullptr)
         return;
     OnUiThread([widget, x_dip, y_dip, width_dip, height_dip]() {
-        // DUI positions a control with an absolute rect inside its parent, and its
-        // fixed-size pair keeps the layout from overriding the arranged size.
-        widget->control->SetPos(ui::UiRect(static_cast<int32_t>(x_dip), static_cast<int32_t>(y_dip),
-                                           static_cast<int32_t>(x_dip + width_dip),
-                                           static_cast<int32_t>(y_dip + height_dip)));
-        widget->control->SetFixedWidth(ui::UiFixedInt::MakeInt(static_cast<int32_t>(width_dip)), true, false);
-        widget->control->SetFixedHeight(ui::UiFixedInt::MakeInt(static_cast<int32_t>(height_dip)), true, false);
-        widget->control->Invalidate();
+        ui::Control* control = widget->control;
+        if (control == nullptr)
+        {
+            SetAsyncError("dui: set_bounds: the widget has no control yet");
+            return;
+        }
+        // Sizes first (these re-run the parent layout), position last: the managed
+        // side hands us DIP, so bNeedDpiScale=false avoids double-scaling on HiDPI.
+        control->SetFixedWidth(ui::UiFixedInt::MakeInt(static_cast<int32_t>(width_dip)), true, false);
+        control->SetFixedHeight(ui::UiFixedInt::MakeInt(static_cast<int32_t>(height_dip)), true, false);
+        // duilib's container layout owns its children's rectangles; "float=true" takes
+        // the control out of the layout flow so MAUI's arranged rect is authoritative
+        // (src/Core/Box.cpp:110 shows Box::SetPos re-arranging children).
+        control->SetAttribute("float", "true");
+        control->SetPos(ui::UiRect(static_cast<int32_t>(x_dip), static_cast<int32_t>(y_dip),
+                                   static_cast<int32_t>(x_dip + width_dip),
+                                   static_cast<int32_t>(y_dip + height_dip)));
+        control->SetAttribute("pos",
+            std::to_string(static_cast<int32_t>(x_dip)) + "," + std::to_string(static_cast<int32_t>(y_dip)) + "," +
+            std::to_string(static_cast<int32_t>(x_dip + width_dip)) + "," +
+            std::to_string(static_cast<int32_t>(y_dip + height_dip)));
+        control->Invalidate();
+        Trace("set_bounds " + widget->name + " -> " + std::to_string((int)x_dip) + "," +
+              std::to_string((int)y_dip) + " " + std::to_string((int)width_dip) + "x" +
+              std::to_string((int)height_dip));
     });
     DUI_SHIM_GUARD_END()
 }
@@ -708,13 +994,19 @@ void dui_shim_widget_get_bounds(dui_shim_widget* widget, double* x_dip, double* 
 void dui_shim_widget_set_attribute(dui_shim_widget* widget, const char* name_utf8, const char* value_utf8)
 {
     DUI_SHIM_GUARD_BEGIN
-    if (widget == nullptr || widget->control == nullptr)
+    if (widget == nullptr)
         return;
     const std::string name = Utf8(name_utf8);
     const std::string value = Utf8(value_utf8);
     OnUiThread([widget, name, value]() {
-        widget->control->SetAttribute(name, value);
-        widget->control->Invalidate();
+        ui::Control* control = widget->control;
+        if (control == nullptr)
+        {
+            SetAsyncError("dui: set_attribute: the widget has no control yet");
+            return;
+        }
+        control->SetAttribute(name, value);
+        control->Invalidate();
     });
     DUI_SHIM_GUARD_END()
 }
@@ -722,14 +1014,20 @@ void dui_shim_widget_set_attribute(dui_shim_widget* widget, const char* name_utf
 void dui_shim_widget_set_text(dui_shim_widget* widget, const char* text_utf8)
 {
     DUI_SHIM_GUARD_BEGIN
-    if (widget == nullptr || widget->control == nullptr)
+    if (widget == nullptr)
         return;
     const std::string text = Utf8(text_utf8);
     OnUiThread([widget, text]() {
+        ui::Control* control = widget->control;
+        if (control == nullptr)
+        {
+            SetAsyncError("dui: set_text: the widget has no control yet");
+            return;
+        }
         // Control has no SetText: text lives on the LabelOwner interface, so the
         // universal XML attribute is the type-agnostic route.
-        widget->control->SetAttribute("text", text);
-        widget->control->Invalidate();
+        control->SetAttribute("text", text);
+        control->Invalidate();
     });
     DUI_SHIM_GUARD_END()
 }
@@ -737,11 +1035,14 @@ void dui_shim_widget_set_text(dui_shim_widget* widget, const char* text_utf8)
 void dui_shim_widget_set_visible(dui_shim_widget* widget, int32_t visible)
 {
     DUI_SHIM_GUARD_BEGIN
-    if (widget == nullptr || widget->control == nullptr)
+    if (widget == nullptr)
         return;
     OnUiThread([widget, visible]() {
-        widget->control->SetVisible(visible != 0);
-        widget->control->Invalidate();
+        ui::Control* control = widget->control;
+        if (control == nullptr)
+            return;
+        control->SetVisible(visible != 0);
+        control->Invalidate();
     });
     DUI_SHIM_GUARD_END()
 }
@@ -749,11 +1050,14 @@ void dui_shim_widget_set_visible(dui_shim_widget* widget, int32_t visible)
 void dui_shim_widget_set_enabled(dui_shim_widget* widget, int32_t enabled)
 {
     DUI_SHIM_GUARD_BEGIN
-    if (widget == nullptr || widget->control == nullptr)
+    if (widget == nullptr)
         return;
     OnUiThread([widget, enabled]() {
-        widget->control->SetEnabled(enabled != 0);
-        widget->control->Invalidate();
+        ui::Control* control = widget->control;
+        if (control == nullptr)
+            return;
+        control->SetEnabled(enabled != 0);
+        control->Invalidate();
     });
     DUI_SHIM_GUARD_END()
 }
@@ -778,13 +1082,19 @@ void dui_shim_widget_set_event_handler(dui_shim_widget* widget, int32_t event_id
     DUI_SHIM_GUARD_BEGIN
     if (widget == nullptr)
         return;
-    if (event_id != DUI_SHIM_EVENT_CLICK || callback == nullptr || widget->control == nullptr)
+    if (event_id != DUI_SHIM_EVENT_CLICK || callback == nullptr)
         return; // other events are not bridged yet
 
-    ui::Control* control = widget->control;
-    OnUiThread([control, callback, user_data]() {
-        control->AttachClick([callback, user_data](const ui::EventArgs&) {
-            callback(user_data, nullptr, DUI_SHIM_EVENT_CLICK);
+    dui_shim_widget* handle = widget;
+    OnUiThread([handle, event_id, callback, user_data]() {
+        ui::Control* control = handle->control;
+        if (control == nullptr)
+        {
+            SetAsyncError("dui: set_event_handler: the widget has no control yet");
+            return;
+        }
+        control->AttachClick([handle, event_id, callback, user_data](const ui::EventArgs&) {
+            callback(user_data, handle, event_id);
             return true;
         });
     });
@@ -794,10 +1104,11 @@ void dui_shim_widget_set_event_handler(dui_shim_widget* widget, int32_t event_id
 void dui_shim_widget_invalidate(dui_shim_widget* widget)
 {
     DUI_SHIM_GUARD_BEGIN
-    if (widget == nullptr || widget->control == nullptr)
+    if (widget == nullptr)
         return;
     OnUiThread([widget]() {
-        widget->control->Invalidate();
+        if (widget->control != nullptr)
+            widget->control->Invalidate();
     });
     DUI_SHIM_GUARD_END()
 }
