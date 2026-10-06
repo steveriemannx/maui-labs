@@ -121,19 +121,6 @@ DUI_SHIM_EXPORT void dui_shim_window_set_size_handler(dui_shim_window* window, d
  *  window instead of showing a frame around a smaller surface). Must be called before
  *  dui_shim_run(). */
 DUI_SHIM_EXPORT void dui_shim_window_set_shadow(dui_shim_window* window, int32_t attached);
-
-/** Resizes the window's client area. On macOS this goes through AppKit (the toolkit's own
- *  resize path is a no-op there), elsewhere through the toolkit. Returns 1 when the
- *  request was accepted. Mostly useful for tests and for hosts driving layout without a
- *  pointer. */
-DUI_SHIM_EXPORT int32_t dui_shim_window_set_client_size(dui_shim_window* window, int32_t width, int32_t height);
-
-DUI_SHIM_EXPORT int32_t dui_shim_window_set_client_size(dui_shim_window* window, int32_t width, int32_t height);
-
-/** Area of the window the host must keep clear of (e.g. the macOS title bar with its
- *  traffic lights). Values are in the same units as dui_shim_window_get_client_size().
- *  @return 1 on success, 0 when the platform reports no insets. */
-DUI_SHIM_EXPORT int32_t dui_shim_window_get_content_insets(dui_shim_window* window, int32_t* top, int32_t* left, int32_t* bottom, int32_t* right);
 DUI_SHIM_EXPORT void dui_shim_window_get_bounds(dui_shim_window* window, double* x_dip, double* y_dip, double* width_dip, double* height_dip);
 
 /** Feeds a left-button click at (x, y) in window coordinates into the toolkit, i.e. the

@@ -110,17 +110,6 @@ public sealed class DuiWindow : IDisposable
     }
 
     /// <summary>
-    /// Resizes the window's client area through the toolkit (macOS: AppKit), which is what
-    /// triggers the size notification and lets the host re-lay out. Returns true when the
-    /// request was accepted.
-    /// </summary>
-    public bool SetClientSize(int width, int height)
-    {
-        ThrowIfDisposed();
-        return DuiNative.dui_shim_window_set_client_size(_handle, width, height) != 0;
-    }
-
-    /// <summary>
     /// Keeps or drops the toolkit's window shadow/decoration.
     /// </summary>
     /// <remarks>

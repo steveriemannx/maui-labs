@@ -69,9 +69,10 @@ public partial class WindowHandler : ElementHandler<IWindow, DuiWindow>
         // measured/arranged so every handler below it receives a real rectangle.
         content.ToHandler(MauiContext);
 
-        var width = (int)Math.Round(VirtualView.Width > 0 ? VirtualView.Width : 800);
-        var height = (int)Math.Round(VirtualView.Height > 0 ? VirtualView.Height : 600);
-        ApplyClientLayout(platformView, width, height);
+        var width = VirtualView.Width > 0 ? VirtualView.Width : 800;
+        var height = VirtualView.Height > 0 ? VirtualView.Height : 600;
+        platformView.Root.SetBounds(new Rect(0, 0, width, height));
+        ArrangeContent(width, height);
 
         // Immediate re-layout on the toolkit's size notification, plus the poll below as a
         // safety net for backends that do not raise it.
@@ -86,53 +87,14 @@ public partial class WindowHandler : ElementHandler<IWindow, DuiWindow>
         base.DisconnectHandler(platformView);
     }
 
-    int _lastAppliedWidth = -1;
-    int _lastAppliedHeight = -1;
-    long _lastClientLayoutTicks;
-
-    /// <summary>
-    /// Re-lays out when the toolkit's client area really changed.
-    /// </summary>
-    /// <remarks>
-    /// The size is always re-read from the toolkit rather than taken from the notification:
-    /// resizing our own root container raises the toolkit's size notification too, and
-    /// feeding that value back in made every pass subtract the platform inset again (the
-    /// layout shrank a little on each event, which is what made resizing flicker).
-    /// </remarks>
-    void ApplyClientAreaIfChanged(DuiWindow platformView, bool throttle)
-    {
-        if (!platformView.TryGetClientSize(out var size))
-            return;
-
-        var width = (int)Math.Round(size.Width);
-        var height = (int)Math.Round(size.Height);
-        if (width <= 0 || height <= 0)
-            return;
-
-        if (width == _lastAppliedWidth && height == _lastAppliedHeight)
-            return;
-
-        if (throttle)
-        {
-            // A live resize raises the notification continuously and each pass ends in a
-            // full repaint, so coalesce while the user is dragging.
-            var now = Environment.TickCount64;
-            if (now - _lastClientLayoutTicks < 60)
-                return;
-
-            _lastClientLayoutTicks = now;
-        }
-
-        _lastAppliedWidth = width;
-        _lastAppliedHeight = height;
-        ApplyClientLayout(platformView, width, height);
-    }
-
     /// <summary>Runs on the toolkit's UI thread when the window (client area) changes.</summary>
     void OnClientSizeChanged(int width, int height)
     {
-        if (PlatformView is { } platformView)
-            ApplyClientAreaIfChanged(platformView, throttle: true);
+        if (width <= 0 || height <= 0)
+            return;
+
+        PlatformView?.Root.SetBounds(new Rect(0, 0, width, height));
+        ArrangeContent(width, height);
     }
 
     /// <summary>
@@ -150,11 +112,25 @@ public partial class WindowHandler : ElementHandler<IWindow, DuiWindow>
 
         var thread = new Thread(() =>
         {
+            Size? lastApplied = null;
+
             while (VirtualView is not null && !platformView.IsDisposed)
             {
                 Thread.Sleep(200);
 
-                void Apply() => ApplyClientAreaIfChanged(platformView, throttle: false);
+                if (!platformView.TryGetClientSize(out var size))
+                    continue;
+
+                if (lastApplied is { } previous && previous == size)
+                    continue;
+
+                lastApplied = size;
+
+                void Apply()
+                {
+                    platformView.Root.SetBounds(new Rect(0, 0, size.Width, size.Height));
+                    ArrangeContent(size.Width, size.Height);
+                }
 
                 if (dispatcher is not null && dispatcher.IsDispatchRequired)
                     dispatcher.Dispatch(Apply);
@@ -168,21 +144,6 @@ public partial class WindowHandler : ElementHandler<IWindow, DuiWindow>
         };
 
         thread.Start();
-    }
-
-    /// <summary>
-    /// Sizes the root container to the client area and re-runs the content's layout pass.
-    /// </summary>
-    /// <remarks>
-    /// Deliberately ignores the platform's content insets: on macOS the traffic lights and
-    /// title float above a full-size content view, and keeping the layout clear of them made
-    /// the window render black on that backend. The app gives its own top row enough height
-    /// to stay readable instead.
-    /// </remarks>
-    void ApplyClientLayout(DuiWindow platformView, int width, int height)
-    {
-        platformView.Root.SetBounds(new Rect(0, 0, width, height));
-        ArrangeContent(width, height);
     }
 
     /// <summary>Runs the content's cross-platform measure/arrange pass.</summary>
@@ -207,7 +168,8 @@ public partial class WindowHandler : ElementHandler<IWindow, DuiWindow>
         if (window.Width > 0 && window.Height > 0)
         {
             platformView.SetSize((int)Math.Round(window.Width), (int)Math.Round(window.Height));
-            handler.ApplyClientLayout(platformView, (int)Math.Round(window.Width), (int)Math.Round(window.Height));
+            platformView.Root.SetBounds(new Rect(0, 0, window.Width, window.Height));
+            handler.ArrangeContent(window.Width, window.Height);
         }
     }
 }
