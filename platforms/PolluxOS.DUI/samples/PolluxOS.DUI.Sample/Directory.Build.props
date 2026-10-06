@@ -1,0 +1,14 @@
+<Project>
+  <!--
+    Deliberately shadowing the repository's Directory.Build.props.
+
+    This test is a plain SDK project on purpose: it compiles the bridge's real
+    interop sources and must run on hosts that have no access to the repo toolchain
+    (the polluxos/FreeBSD box runs a user-local .NET SDK, no Arcade, and the repo's
+    global.json pins an SDK that is not installed there). Not importing the root
+    props/targets keeps Arcade and central package management out of the way.
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>

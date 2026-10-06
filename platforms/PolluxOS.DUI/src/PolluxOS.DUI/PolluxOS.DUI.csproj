@@ -2,12 +2,12 @@
 
   <PropertyGroup>
     <!--
-      Bring-up target is macOS: DUI itself is cross-platform (Windows/Linux/macOS/FreeBSD),
-      and its Cocoa/AppKit backend lets the bridge be developed and tested on a Mac today.
-      A PolluxOS TFM is added once that platform has a .NET runtime/TFM to build against.
+      Platform-neutral on purpose: DUI provides the windowing/rendering, so the backend
+      has no dependency on a platform SDK TFM. This is what lets the same assembly run
+      on polluxos/FreeBSD (and macOS) with the platform's own libdui_shim, and it mirrors
+      how the working Avalonia MAUI backend targets FreeBSD (net10.0 + MAUI from NuGet).
     -->
-    <TargetFramework>net10.0-macos</TargetFramework>
-    <SupportedOSPlatformVersion>14.0</SupportedOSPlatformVersion>
+    <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Microsoft.Maui.Platforms.PolluxOS.DUI</RootNamespace>
     <AssemblyName>Microsoft.Maui.Platforms.PolluxOS.DUI</AssemblyName>
     <PackageId>Microsoft.Maui.Platforms.PolluxOS.DUI</PackageId>

@@ -80,6 +80,36 @@ public class DuiPreferences : IPreferences
     public void Set(string key, long value, string? sharedName = null) => Write(key, sharedName, value);
     public void Set(string key, DateTime value, string? sharedName = null) => Write(key, sharedName, value);
 
+    /// <summary>Generic accessor required by the platform-neutral IPreferences shape.</summary>
+    public T Get<T>(string key, T defaultValue, string? sharedName = null)
+    {
+        lock (_gate)
+        {
+            if (!_values.TryGetValue(Key(key, sharedName), out var raw) || raw is null)
+                return defaultValue;
+
+            if (raw is JsonElement element)
+            {
+                var deserialized = element.Deserialize<T>();
+                return deserialized is null ? defaultValue : deserialized;
+            }
+
+            if (raw is T typed)
+                return typed;
+
+            try
+            {
+                return (T)Convert.ChangeType(raw, typeof(T), CultureInfo.InvariantCulture);
+            }
+            catch (Exception)
+            {
+                return defaultValue;
+            }
+        }
+    }
+
+    public void Set<T>(string key, T value, string? sharedName = null) => Write(key, sharedName, value);
+
     T? Read<T>(string key, string? sharedName)
     {
         lock (_gate)

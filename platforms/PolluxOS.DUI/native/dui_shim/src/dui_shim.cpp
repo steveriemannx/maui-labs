@@ -42,6 +42,8 @@
 #include "dui/Core/MessageLoop_MacOS.h"
 #endif
 
+#include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <deque>
@@ -69,6 +71,10 @@ thread_local std::string g_last_error;
 // materialized.
 std::mutex g_async_error_mutex;
 std::string g_async_error;
+
+// True while the toolkit's message loop runs. Sync reads use it to fail fast instead of
+// waiting for a drain that cannot happen yet (a host inspecting the tree before run()).
+std::atomic<bool> g_loop_running{false};
 
 void SetError(const std::string& message)
 {
@@ -222,6 +228,13 @@ public:
 
     bool Started() const { return m_started; }
 
+    /// Host hook: the idle handler runs on the UI thread inside the toolkit's loop.
+    void SetIdleHandler(dui_shim_idle_cb handler, void* user_data)
+    {
+        m_idle_handler = handler;
+        m_idle_user_data = user_data;
+    }
+
     CommandQueue& Commands() { return m_commands; }
 
     void AddWindow(dui_shim_window* handle) { m_windows.push_back(handle); }
@@ -263,6 +276,8 @@ private:
     std::string m_locale;
     CommandQueue m_commands;
     std::vector<dui_shim_window*> m_windows;
+    dui_shim_idle_cb m_idle_handler = nullptr;
+    void* m_idle_user_data = nullptr;
 };
 
 // Runs on the UI thread. Mirrors ui::RunWindow() (include/dui/Utils/UiBuilder.h):
@@ -329,10 +344,15 @@ void DuiHost::OnInit()
             handle->shown = true;
         }
     }
+
+    // From here the idle loop services the command queue, so synchronous reads
+    // (tree dump, control lookup) may wait for the UI thread.
+    g_loop_running.store(true);
 }
 
 void DuiHost::OnCleanup()
 {
+    g_loop_running.store(false);
     for (dui_shim_window* handle : m_windows)
         handle->window = nullptr; // closed by the toolkit on final message
     m_windows.clear();
@@ -342,6 +362,11 @@ void DuiHost::OnCleanup()
 void DuiHost::OnMessageLoopIdle()
 {
     m_commands.Drain();
+
+    // Host hook: this runs on the UI thread inside the toolkit's loop, the only place
+    // a managed dispatcher can execute with the right thread affinity.
+    if (m_idle_handler != nullptr)
+        m_idle_handler(m_idle_user_data);
 }
 
 DuiHost& Host()
@@ -355,10 +380,17 @@ void OnUiThread(std::function<void()> action)
 }
 
 // Runs `action` on the UI thread and waits for it. For read paths that must touch
-// the toolkit from a host thread (control lookup, tree dump). Must NOT be called
-// from the UI thread itself — it would deadlock on its own queue.
-void RunOnUiThreadSync(std::function<void()> action)
+// the toolkit from a host thread (control lookup, tree dump). Returns false — instead of
+// blocking forever — when the message loop is not running yet or the toolkit does not
+// service the queue in time. Must NOT be called from the UI thread itself.
+bool RunOnUiThreadSync(std::function<void()> action)
 {
+    if (!g_loop_running.load())
+    {
+        SetError("dui: the message loop is not running yet (call dui_shim_run first)");
+        return false;
+    }
+
     std::promise<void> done;
     auto future = done.get_future();
     OnUiThread([&action, &done]() {
@@ -376,7 +408,13 @@ void RunOnUiThreadSync(std::function<void()> action)
         }
         done.set_value();
     });
-    future.wait();
+
+    if (future.wait_for(std::chrono::seconds(5)) != std::future_status::ready)
+    {
+        SetError("dui: timed out waiting for the toolkit's UI thread");
+        return false;
+    }
+    return true;
 }
 
 ui::Box* RootBox(dui_shim_window* handle)
@@ -566,6 +604,13 @@ const char* dui_shim_last_error(void)
 const char* dui_shim_version(void)
 {
     return kVersion;
+}
+
+void dui_shim_set_idle_handler(dui_shim_idle_cb callback, void* user_data)
+{
+    DUI_SHIM_GUARD_BEGIN
+    Host().SetIdleHandler(callback, user_data);
+    DUI_SHIM_GUARD_END()
 }
 
 void dui_shim_set_theme(int32_t dark)

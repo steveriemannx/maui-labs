@@ -1,3 +1,6 @@
+using System.Runtime.InteropServices;
+using Microsoft.Maui.Platforms.PolluxOS.DUI.Platform;
+
 namespace Microsoft.Maui.Platforms.PolluxOS.DUI.Interop;
 
 /// <summary>
@@ -12,6 +15,23 @@ namespace Microsoft.Maui.Platforms.PolluxOS.DUI.Interop;
 public static class DuiRuntime
 {
     static bool s_started;
+    static DuiIdleCallback? s_idleCallback;
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    delegate void DuiIdleCallback(nint userData);
+
+    /// <summary>
+    /// Installs the dispatcher pump: DUI invokes the idle handler on its own UI
+    /// thread, and that is where queued <see cref="DuiDispatcher"/> work runs. Called
+    /// by <c>UsePolluxOSDui()</c>; harmless to call twice.
+    /// </summary>
+    public static void UseDispatcher()
+    {
+        s_idleCallback ??= _ => DuiDispatcher.DrainQueue();
+        DuiNative.dui_shim_set_idle_handler(
+            Marshal.GetFunctionPointerForDelegate(s_idleCallback),
+            0);
+    }
 
     /// <summary>Bridge version reported by the shim (not the DUI project version).</summary>
     public static string Version => DuiNative.Version();

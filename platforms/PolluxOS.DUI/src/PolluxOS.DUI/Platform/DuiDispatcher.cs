@@ -1,5 +1,4 @@
-using CoreFoundation;
-using Foundation;
+using System.Collections.Concurrent;
 using Microsoft.Maui.Dispatching;
 
 namespace Microsoft.Maui.Platforms.PolluxOS.DUI.Platform;
@@ -8,32 +7,77 @@ namespace Microsoft.Maui.Platforms.PolluxOS.DUI.Platform;
 /// MAUI dispatcher for the DUI backend.
 /// </summary>
 /// <remarks>
-/// DUI owns the main thread's run loop (its macOS backend runs on NSApplication), so
-/// "the UI thread" and the platform main queue are the same thing. Dispatching to
-/// <see cref="DispatchQueue.MainQueue"/> therefore lands on the thread DUI expects.
+/// DUI is single-threaded and owns its own UI thread, so "the UI thread" is the thread
+/// the toolkit calls its idle handler on. Work is queued here and drained from that
+/// handler (registered by <see cref="DuiDispatcherProvider"/> / <c>UsePolluxOSDui</c>);
+/// on any other thread the call is queued and reported as requiring dispatch.
+///
+/// No platform-specific API is involved, which is what lets the backend target a
+/// platform-neutral TFM and run on FreeBSD/polluxos as well as macOS.
 /// </remarks>
 public class DuiDispatcher : IDispatcher
 {
-    public static IDispatcher? GetForCurrentThread()
+    static readonly ConcurrentQueue<Action> s_queue = new();
+
+    [ThreadStatic]
+    static bool t_onUiThread;
+
+    static DuiDispatcher? s_current;
+    static nint s_idleCallbackPointer;
+
+    /// <summary>The process-wide dispatcher (one DUI instance per process).</summary>
+    public static DuiDispatcher Current => s_current ??= new DuiDispatcher();
+
+    public static IDispatcher? GetForCurrentThread() => Current;
+
+    /// <summary>True while running inside DUI's idle callback.</summary>
+    internal static bool IsOnUiThread => t_onUiThread;
+
+    internal static void DrainQueue()
     {
-        if (NSThread.IsMain)
-            return new DuiDispatcher();
-        return null;
+        t_onUiThread = true;
+        try
+        {
+            while (s_queue.TryDequeue(out var action))
+            {
+                try
+                {
+                    action();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"PolluxOS.DUI: dispatched action threw: {ex}");
+                }
+            }
+        }
+        finally
+        {
+            t_onUiThread = false;
+        }
     }
 
-    public bool IsDispatchRequired => !NSThread.IsMain;
+    internal static nint IdleCallbackPointer
+    {
+        get => s_idleCallbackPointer;
+        set => s_idleCallbackPointer = value;
+    }
+
+    public bool IsDispatchRequired => !t_onUiThread;
 
     public IDispatcherTimer CreateTimer() => new DuiDispatcherTimer();
 
     public bool Dispatch(Action action)
     {
-        DispatchQueue.MainQueue.DispatchAsync(action);
+        s_queue.Enqueue(action);
         return true;
     }
 
     public bool DispatchDelayed(TimeSpan delay, Action action)
     {
-        DispatchQueue.MainQueue.DispatchAfter(new DispatchTime(DispatchTime.Now, delay), action);
+        // A pooled timer can be noisy; one thread per delayed dispatch is fine for a
+        // bring-up backend and keeps the queue the only shared state.
+        var timer = new Timer(_ => s_queue.Enqueue(action), null, delay, Timeout.InfiniteTimeSpan);
+        _ = timer;
         return true;
     }
 }
@@ -43,11 +87,12 @@ public class DuiDispatcherProvider : IDispatcherProvider
     public IDispatcher? GetForCurrentThread() => DuiDispatcher.GetForCurrentThread();
 }
 
-/// <summary>Timer backed by the main run loop, so ticks arrive on the DUI UI thread.</summary>
+/// <summary>Timer whose ticks are delivered through the dispatcher queue, so handlers
+/// run on the toolkit's UI thread.</summary>
 public class DuiDispatcherTimer : IDispatcherTimer
 {
-    readonly object _gate = new();
-    NSTimer? _timer;
+    readonly DuiDispatcher _dispatcher = DuiDispatcher.Current;
+    Timer? _timer;
     TimeSpan _interval = TimeSpan.FromMilliseconds(16);
 
     public TimeSpan Interval
@@ -76,23 +121,22 @@ public class DuiDispatcherTimer : IDispatcherTimer
             return;
 
         IsRunning = true;
-        var interval = Math.Max(0.001, _interval.TotalSeconds);
-        _timer = NSTimer.CreateRepeatingScheduledTimer(interval, _ =>
+        _timer = new Timer(_ =>
         {
-            Tick?.Invoke(this, EventArgs.Empty);
+            if (!IsRunning)
+                return;
+
+            _dispatcher.Dispatch(() => Tick?.Invoke(this, EventArgs.Empty));
+
             if (!IsRepeating)
                 Stop();
-        });
+        }, null, _interval, IsRepeating ? _interval : Timeout.InfiniteTimeSpan);
     }
 
     public void Stop()
     {
-        lock (_gate)
-        {
-            IsRunning = false;
-            _timer?.Invalidate();
-            _timer?.Dispose();
-            _timer = null;
-        }
+        IsRunning = false;
+        _timer?.Dispose();
+        _timer = null;
     }
 }

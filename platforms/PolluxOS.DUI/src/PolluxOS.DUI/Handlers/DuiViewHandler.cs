@@ -59,16 +59,16 @@ public abstract class DuiViewHandler<TVirtualView> : ViewHandler<TVirtualView, D
         return new DuiWidget(handle);
     }
 
-    public static void MapVisibility(IViewHandler handler, IView view)
+    public static new void MapVisibility(IViewHandler handler, IView view)
         => (handler.PlatformView as DuiWidget)?.SetVisible(view.Visibility == Visibility.Visible);
 
-    public static void MapIsEnabled(IViewHandler handler, IView view)
+    public static new void MapIsEnabled(IViewHandler handler, IView view)
         => (handler.PlatformView as DuiWidget)?.SetEnabled(view.IsEnabled);
 
-    public static void MapAutomationId(IViewHandler handler, IView view)
+    public static new void MapAutomationId(IViewHandler handler, IView view)
         => (handler.PlatformView as DuiWidget)?.SetAttribute("name", view.AutomationId);
 
-    public static void MapBackground(IViewHandler handler, IView view)
+    public static new void MapBackground(IViewHandler handler, IView view)
     {
         if (handler.PlatformView is not DuiWidget widget)
             return;

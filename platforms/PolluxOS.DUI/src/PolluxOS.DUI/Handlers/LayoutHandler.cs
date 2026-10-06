@@ -38,12 +38,16 @@ public partial class LayoutHandler : DuiViewHandler<ILayout>
 
     protected override string ControlClass => DuiControlClass.Box;
 
+    // ILayout (the platform-neutral interface) exposes no child collection — children
+    // arrive through the ILayoutHandler commands — so the handler tracks what it added.
+    readonly List<DuiWidget> _children = new();
+
     public void Add(IView child) => RealizeChild(child);
 
     public void Insert(int index, IView child)
     {
         // TODO: DUI containers have no positional insert; ordering is currently
-        // append-only. Revisit when Box exposes an index-based API.
+        // append-only. Revisit when the bridge exposes one.
         RealizeChild(child);
     }
 
@@ -55,17 +59,19 @@ public partial class LayoutHandler : DuiViewHandler<ILayout>
 
     public void Remove(IView child)
     {
-        if (child.Handler?.PlatformView is DuiWidget widget)
-            widget.Dispose();
+        if (child.Handler?.PlatformView is not DuiWidget widget)
+            return;
+
+        _children.Remove(widget);
+        widget.Dispose();
     }
 
     public void Clear()
     {
-        if (VirtualView is null)
-            return;
+        foreach (var child in _children.ToArray())
+            child.Dispose();
 
-        foreach (var child in VirtualView.Children.Reverse())
-            Remove(child);
+        _children.Clear();
     }
 
     void RealizeChild(IView child)
@@ -77,10 +83,16 @@ public partial class LayoutHandler : DuiViewHandler<ILayout>
         if (platformContext is null)
             return;
 
+        DuiWidget? platformView;
         using (platformContext.PushParent(PlatformView))
         {
-            child.ToPlatform(MauiContext);
+            // ToHandler realizes the child's handler; its DUI control is created under
+            // this container because that container is on the parent stack.
+            platformView = child.ToHandler(MauiContext)?.PlatformView as DuiWidget;
         }
+
+        if (platformView is not null && !_children.Contains(platformView))
+            _children.Add(platformView);
     }
 
     public static void MapAdd(LayoutHandler handler, ILayout layout, object? arg)

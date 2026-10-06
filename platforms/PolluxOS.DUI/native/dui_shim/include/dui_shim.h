@@ -44,6 +44,11 @@ enum dui_shim_event {
 
 typedef void (*dui_shim_event_cb)(void* user_data, dui_shim_widget* widget, int32_t event_id);
 
+/** Idle callback: invoked on the DUI UI thread whenever the toolkit's message queue is
+ *  empty. This is the only place a host can run managed code with the toolkit's thread
+ *  affinity, which is what a MAUI dispatcher needs (see dui_shim_set_idle_handler). */
+typedef void (*dui_shim_idle_cb)(void* user_data);
+
 /* ------------------------------------------------------------------ runtime */
 
 /** Start the toolkit: loads resources from `resource_root_utf8` (directory holding
@@ -66,6 +71,10 @@ DUI_SHIM_EXPORT const char* dui_shim_last_error(void);
 
 /** Shim ABI/semantic version, e.g. "0.1.0". */
 DUI_SHIM_EXPORT const char* dui_shim_version(void);
+
+/** Install (or clear, with callback == NULL) the idle handler. The toolkit calls it on
+ *  the UI thread while the message loop runs; a host drains its own work queue there. */
+DUI_SHIM_EXPORT void dui_shim_set_idle_handler(dui_shim_idle_cb callback, void* user_data);
 
 /** Application-wide theme (light/dark). DUI applies theme attributes itself;
  *  this is the MAUI-side hint used before a window exists. */

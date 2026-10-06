@@ -17,7 +17,7 @@ using PolluxOS.DUI.Sample;
 // (OpenWindow/CloseWindow) is scaffolded for the full MAUI lifecycle but is not
 // exercised by this bring-up path yet.
 
-var resourceRoot = ResolveResourceRoot();
+var resourceRoot = ResolveResourceRoot(args);
 Console.WriteLine($"DUI resources: {resourceRoot}");
 Console.WriteLine($"dui_shim version: {DuiRuntime.Version}");
 
@@ -66,10 +66,13 @@ finally
     DuiRuntime.Shutdown();
 }
 
-static string ResolveResourceRoot()
+static string ResolveResourceRoot(string[] args)
 {
-    // The sample csproj stamps the resolved directory into assembly metadata; fall
-    // back to an explicit override for ad-hoc runs.
+    // 1. explicit argument (used on FreeBSD/polluxos: the DUI install prefix), 2. an
+    // environment override, 3. the directory stamped in at build time.
+    if (args.Length > 0 && !string.IsNullOrWhiteSpace(args[0]))
+        return args[0];
+
     var fromEnvironment = Environment.GetEnvironmentVariable("POLLUXOS_DUI_RESOURCES");
     if (!string.IsNullOrWhiteSpace(fromEnvironment))
         return fromEnvironment;

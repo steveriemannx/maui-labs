@@ -1,44 +1,56 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0-macos</TargetFramework>
-    <SupportedOSPlatformVersion>14.0</SupportedOSPlatformVersion>
+    <!--
+      Standalone desktop host for the DUI backend (see Directory.Build.props: this
+      project deliberately does not import the repository's Arcade/CPM build, so it
+      builds with a bare .NET SDK and runs on FreeBSD/polluxos as well as macOS).
+    -->
     <OutputType>Exe</OutputType>
-    <UseMaui>true</UseMaui>
+    <TargetFramework>net10.0</TargetFramework>
+    <UseMaui>false</UseMaui>
+    <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>PolluxOS.DUI.Sample</RootNamespace>
     <AssemblyName>PolluxOS.DUI.Sample</AssemblyName>
     <IsPackable>false</IsPackable>
-    <IsShipping>false</IsShipping>
-    <!-- The bridge is loaded by name; a managed build without the dylib is valid. -->
     <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <!-- The bridge is loaded by name; a managed build without it is valid. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Maui.Controls" />
-    <PackageReference Include="Microsoft.Maui.Essentials" />
+    <!-- Like the working Avalonia MAUI backend: the handler layer builds against
+         Microsoft.Maui.Controls.Core (the real cross-platform build), not the
+         aggregate Microsoft.Maui.Controls facade. -->
+    <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.41" />
+    <PackageReference Include="Microsoft.Maui.Controls.Core" Version="10.0.41" />
+    <PackageReference Include="Microsoft.Maui.Core" Version="10.0.41" />
+    <PackageReference Include="Microsoft.Maui.Essentials" Version="10.0.41" />
+    <PackageReference Include="Microsoft.Maui.Graphics" Version="10.0.41" />
   </ItemGroup>
 
+  <!-- Compile the shipping backend + Essentials sources: this host runs the real code. -->
   <ItemGroup>
-    <ProjectReference Include="..\..\src\PolluxOS.DUI\PolluxOS.DUI.csproj" />
-    <ProjectReference Include="..\..\src\PolluxOS.DUI.Essentials\PolluxOS.DUI.Essentials.csproj" />
+    <Compile Include="../../src/PolluxOS.DUI/**/*.cs" LinkBase="PolluxOS.DUI" />
+    <Compile Include="../../src/PolluxOS.DUI.Essentials/**/*.cs" LinkBase="PolluxOS.DUI.Essentials" />
   </ItemGroup>
 
-  <!-- Native bridge: staged by scripts/build-native-macos.sh -->
+  <!-- Native bridge: staged by scripts/build-native-macos.sh (macOS) or built in-tree
+       on FreeBSD/polluxos (libdui_shim.so). -->
   <PropertyGroup>
     <PolluxOSDuiNativeDir Condition="'$(PolluxOSDuiNativeDir)' == ''">$(MSBuildThisFileDirectory)../../artifacts/native/macos</PolluxOSDuiNativeDir>
-    <!-- DUI's resources/ (themes, skins, lang). Installed tree first, checkout second. -->
     <PolluxOSDuiResourcesDir Condition="'$(PolluxOSDuiResourcesDir)' == '' and Exists('$(PolluxOSDuiInstallDir)/share/dui/resources')">$(PolluxOSDuiInstallDir)/share/dui/resources</PolluxOSDuiResourcesDir>
     <PolluxOSDuiResourcesDir Condition="'$(PolluxOSDuiResourcesDir)' == ''">$(PolluxOSDuiRoot)/resources</PolluxOSDuiResourcesDir>
   </PropertyGroup>
 
   <ItemGroup Condition="Exists('$(PolluxOSDuiNativeDir)')">
-    <None Include="$(PolluxOSDuiNativeDir)/*.dylib"
-          CopyToOutputDirectory="PreserveNewest"
-          Link="%(Filename)%(Extension)" />
+    <None Include="$(PolluxOSDuiNativeDir)/*.dylib" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
+    <None Include="$(PolluxOSDuiNativeDir)/*.so" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
+    <None Include="$(PolluxOSDuiNativeDir)/*.dll" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
   </ItemGroup>
 
-  <!-- Exposed to the app so it can hand DUI its resource root at startup. -->
+  <!-- Fallback resource root; a host may also pass it as argv[1] or POLLUXOS_DUI_RESOURCES. -->
   <ItemGroup>
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
       <_Parameter1>PolluxOSDuiResourcesDir</_Parameter1>

@@ -40,6 +40,12 @@ internal static partial class DuiNative
     [LibraryImport(LibraryName)]
     internal static partial void dui_shim_set_theme(int dark);
 
+    /// <summary>Installs the idle handler: DUI calls it on its UI thread whenever the
+    /// message queue is empty (the only place managed code can run with the toolkit's
+    /// thread affinity).</summary>
+    [LibraryImport(LibraryName)]
+    internal static partial void dui_shim_set_idle_handler(nint callback, nint userData);
+
     // -------------------------------------------------------------- window
 
     [LibraryImport(LibraryName, StringMarshalling = StringMarshalling.Utf8)]

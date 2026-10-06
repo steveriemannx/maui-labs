@@ -17,6 +17,8 @@ namespace Microsoft.Maui.Platforms.PolluxOS.DUI.Handlers;
 /// </remarks>
 public partial class WindowHandler : ElementHandler<IWindow, DuiWindow>
 {
+    static int s_windowCounter;
+
     public static readonly IPropertyMapper<IWindow, WindowHandler> Mapper =
         new PropertyMapper<IWindow, WindowHandler>(ElementMapper)
         {
@@ -36,7 +38,11 @@ public partial class WindowHandler : ElementHandler<IWindow, DuiWindow>
         var width = window.Width > 0 ? (int)Math.Round(window.Width) : 800;
         var height = window.Height > 0 ? (int)Math.Round(window.Height) : 600;
 
-        var platformWindow = DuiWindow.Create(window.Title ?? "PolluxOS.DUI", width, height, name: window.Id.ToString());
+        var platformWindow = DuiWindow.Create(
+            title: window.Title ?? "PolluxOS.DUI",
+            width: width,
+            height: height,
+            name: $"window-{Interlocked.Increment(ref s_windowCounter)}");
 
         if (MauiContext?.Services.GetService<DuiPlatformContext>() is { } platformContext)
         {

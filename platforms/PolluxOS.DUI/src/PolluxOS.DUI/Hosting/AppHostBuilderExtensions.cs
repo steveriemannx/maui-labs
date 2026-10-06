@@ -40,6 +40,11 @@ public static partial class AppHostBuilderExtensions
         builder.Services.AddSingleton<DuiPlatformContext>();
         builder.Services.AddSingleton<IDispatcherProvider>(_ => new DuiDispatcherProvider());
 
+        // Give MAUI a UI thread: DUI's idle callback drains the dispatcher queue on the
+        // toolkit's own thread (this is the piece that makes the backend work on hosts
+        // where no platform dispatcher exists, e.g. FreeBSD/polluxos).
+        DuiRuntime.UseDispatcher();
+
         builder.Services.AddScoped(svc =>
         {
             var provider = svc.GetRequiredService<IDispatcherProvider>();
