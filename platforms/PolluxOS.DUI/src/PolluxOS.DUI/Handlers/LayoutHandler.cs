@@ -38,6 +38,32 @@ public partial class LayoutHandler : DuiViewHandler<ILayout>
 
     protected override string ControlClass => DuiControlClass.Box;
 
+    protected override DuiWidget CreatePlatformView()
+    {
+        // Wrap the container so MAUI's cross-platform layout can drive it: the panel
+        // forwards CrossPlatformMeasure/Arrange to the virtual layout, whose cross-platform
+        // engine then arranges every child (each child handler's PlatformArrange sets the
+        // DUI rectangle).
+        var widget = CreateDuiWidget();
+        return VirtualView is ICrossPlatformLayout crossPlatformLayout
+            ? new DuiLayoutPanel(widget, crossPlatformLayout)
+            : widget;
+    }
+
+    public override Size GetDesiredSize(double widthConstraint, double heightConstraint)
+        => VirtualView is ICrossPlatformLayout crossPlatformLayout
+            ? crossPlatformLayout.CrossPlatformMeasure(widthConstraint, heightConstraint)
+            : base.GetDesiredSize(widthConstraint, heightConstraint);
+
+    public override void PlatformArrange(Rect rect)
+    {
+        // Place the container itself, then let MAUI arrange its children inside it.
+        base.PlatformArrange(rect);
+
+        if (VirtualView is ICrossPlatformLayout crossPlatformLayout)
+            crossPlatformLayout.CrossPlatformArrange(new Rect(0, 0, rect.Width, rect.Height));
+    }
+
     // ILayout (the platform-neutral interface) exposes no child collection — children
     // arrive through the ILayoutHandler commands — so the handler tracks what it added.
     readonly List<DuiWidget> _children = new();

@@ -45,7 +45,14 @@ public abstract class DuiViewHandler<TVirtualView> : ViewHandler<TVirtualView, D
     /// <summary>Size used when neither MAUI nor DUI can produce a measurement.</summary>
     protected virtual Size DefaultDesiredSize => new(0, 0);
 
-    protected override DuiWidget CreatePlatformView()
+    protected override DuiWidget CreatePlatformView() => CreateDuiWidget();
+
+    /// <summary>
+    /// Creates the bridge widget for this handler's <see cref="ControlClass"/>. Split out
+    /// so container handlers can wrap it in a panel that also participates in MAUI's
+    /// cross-platform layout (see <see cref="DuiLayoutPanel"/>).
+    /// </summary>
+    protected DuiWidget CreateDuiWidget()
     {
         var platformContext = MauiContext?.Services.GetService<DuiPlatformContext>()
             ?? throw new InvalidOperationException("DuiPlatformContext is not registered. Call UsePolluxOSDui().");

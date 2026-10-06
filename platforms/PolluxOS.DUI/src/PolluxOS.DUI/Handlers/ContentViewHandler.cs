@@ -1,3 +1,4 @@
+using Microsoft.Maui.Graphics;
 using Microsoft.Maui.Handlers;
 using Microsoft.Maui.Platform;
 using Microsoft.Maui.Platforms.PolluxOS.DUI.Interop;
@@ -30,6 +31,21 @@ public partial class ContentViewHandler : DuiViewHandler<IContentView>
         // connect as well as through the property mapper.
         if (VirtualView is not null)
             SetContent(VirtualView.PresentedContent ?? VirtualView.Content as IView);
+    }
+
+    // IContentView is an ICrossPlatformLayout: forwarding measure/arrange here is what
+    // makes the page's content (and, transitively, the layout's children) get rectangles.
+    public override Size GetDesiredSize(double widthConstraint, double heightConstraint)
+        => VirtualView is ICrossPlatformLayout crossPlatformLayout
+            ? crossPlatformLayout.CrossPlatformMeasure(widthConstraint, heightConstraint)
+            : base.GetDesiredSize(widthConstraint, heightConstraint);
+
+    public override void PlatformArrange(Rect rect)
+    {
+        base.PlatformArrange(rect);
+
+        if (VirtualView is ICrossPlatformLayout crossPlatformLayout)
+            crossPlatformLayout.CrossPlatformArrange(new Rect(0, 0, rect.Width, rect.Height));
     }
 
     public static void MapPresentedContent(ContentViewHandler handler, IContentView view)

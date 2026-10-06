@@ -65,12 +65,24 @@ public partial class WindowHandler : ElementHandler<IWindow, DuiWindow>
             return;
 
         // Realizing the page parents its DUI controls to the window root through
-        // DuiPlatformContext; the root is then sized to the window.
-        content.ToPlatform(MauiContext);
+        // DuiPlatformContext; the root is sized to the window and the content is
+        // measured/arranged so every handler below it receives a real rectangle.
+        content.ToHandler(MauiContext);
 
         var width = VirtualView.Width > 0 ? VirtualView.Width : 800;
         var height = VirtualView.Height > 0 ? VirtualView.Height : 600;
         platformView.Root.SetBounds(new Rect(0, 0, width, height));
+        ArrangeContent(width, height);
+    }
+
+    /// <summary>Runs the content's cross-platform measure/arrange pass.</summary>
+    void ArrangeContent(double width, double height)
+    {
+        if (VirtualView?.Content is not ICrossPlatformLayout content || width <= 0 || height <= 0)
+            return;
+
+        content.CrossPlatformMeasure(width, height);
+        content.CrossPlatformArrange(new Rect(0, 0, width, height));
     }
 
     public static void MapTitle(WindowHandler handler, IWindow window)
@@ -86,6 +98,7 @@ public partial class WindowHandler : ElementHandler<IWindow, DuiWindow>
         {
             platformView.SetSize((int)Math.Round(window.Width), (int)Math.Round(window.Height));
             platformView.Root.SetBounds(new Rect(0, 0, window.Width, window.Height));
+            handler.ArrangeContent(window.Width, window.Height);
         }
     }
 }

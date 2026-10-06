@@ -19,7 +19,7 @@ convenience for development.
 | C interop smoke (`native/dui_shim/tests/abi_smoke.c`) | ✅ SMOKE OK on both (window, Label + Button, tree dump, clean shutdown) |
 | C# interop layer (`tests/PolluxOS.DUI.Interop.Smoke`) | ✅ SMOKE OK on both, including a DUI click reaching a managed callback |
 | MAUI backend + host (`samples/PolluxOS.DUI.Sample`) | ✅ the **MAUI app runs on polluxos/FreeBSD** and its page is realized as DUI controls (verified with a desktop screenshot + widget-tree dump) |
-| Layout fidelity | ⚠️ MAUI's cross-platform layout is not bridged into the DUI container yet, so children currently share one rectangle — see *Known gaps* |
+| Layout | ✅ MAUI's cross-platform layout drives DUI: containers forward `ICrossPlatformLayout` measure/arrange, so a `VerticalStackLayout { Padding=24, Spacing=12 }` places its children at y=24/60/96 with the widths the layout computed |
 | Handler coverage | ⚠️ Application, Window, ContentPage/ContentView, Layout, Label, Button |
 
 ## Platform support
@@ -143,6 +143,10 @@ Remote (polluxos, FreeBSD 15 / Wayland) evidence:
   `window → ShadowBox → Box(maui-root) → Box(ContentPage) → Box(ContentView) →
   Label(TitleLabel) + Label(CounterLabel) + Button(CounterButton)` — `AutomationId`
   becomes the DUI control name, which is what a DevFlow-style agent would query.
+* Layout bridge: the same tree on macOS shows the stack layout's own geometry
+  (`TitleLabel` at 24,24,852x24; `CounterLabel` at 24,60,852x24; `CounterButton` at
+  24,96,852x36 for a `VerticalStackLayout { Padding = 24, Spacing = 12 }` in a 900x600
+  window), i.e. MAUI — not the backend — decides where controls go.
 
 Local (macOS): the same C, C# and MAUI hosts build and run; DUI's own
 `ScreenCapture::CaptureBitmap` returns null on macOS, so captures there need
@@ -150,11 +154,11 @@ Local (macOS): the same C, C# and MAUI hosts build and run; DUI's own
 
 ## Known gaps / next steps
 
-1. **Bridge MAUI's cross-platform layout into DUI.** The layout container should
-   implement `ICrossPlatformLayout` (`CrossPlatformMeasure` / `CrossPlatformArrange`
-   forwarding to the virtual view, as the Avalonia MAUI backend's layout panel does) so
-   every child handler receives a real rectangle. Today children of a layout share one
-   rect, which is why the screenshot shows overlapping text.
+1. **Toolkit-side measurement.** Positions/sizes now come from MAUI's cross-platform
+   layout, but leaf sizes use the handler defaults (Label 120x24, Button 120x36) because
+   `dui_shim_widget_measure` is still a stub — DUI measures inside its own layout pass and
+   exposes no "measure this control for WxH" call. Wiring that (or letting DUI measure and
+   report back) is what would make text-sized controls exact.
 2. Wider handler coverage — see
    [`../references/PLATFORM_BACKEND_IMPLEMENTATION.md`](../references/PLATFORM_BACKEND_IMPLEMENTATION.md)
    (23 areas; the AppKit backend is ~131 files for comparison).
