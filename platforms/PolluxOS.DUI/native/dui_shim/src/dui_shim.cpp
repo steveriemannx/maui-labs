@@ -280,6 +280,20 @@ private:
     void* m_idle_user_data = nullptr;
 };
 
+// Applies a host-requested window size. `Resize(..., bContainShadow=false)` makes the
+// requested size the *client* area, so the host's layout matches the window exactly;
+// `SetWindowSize()` would fold DUI's shadow corner into it (the host then draws its tree
+// inside a larger decorated surface, which reads as a window inside a window).
+void ApplyClientSize(ui::Window* window, int width, int height)
+{
+    if (window == nullptr || width <= 0 || height <= 0)
+        return;
+
+    window->Resize(width, height, false, false);
+    window->InvalidateAll();
+    window->UpdateWindow();
+}
+
 // Runs on the UI thread. Mirrors ui::RunWindow() (include/dui/Utils/UiBuilder.h):
 // GlobalManager::Startup -> new WindowImplBase -> CreateWnd -> PostQuitMsgWhenClosed
 // -> InvalidateAll/UpdateWindow/ShowWindow, with GlobalManager::Shutdown in cleanup.
@@ -316,8 +330,7 @@ void DuiHost::OnInit()
         // WindowCreateParam carries no size, so apply the requested one explicitly:
         // without this DUI falls back to its skin/default size (800x600), which is why a
         // 380x560 calculator window came up at the wrong size with its layout in a corner.
-        if (handle->width > 0 && handle->height > 0)
-            window->SetWindowSize(handle->width, handle->height);
+        ApplyClientSize(window, handle->width, handle->height);
 
         // A pure-code window has no root container until one is attached: the XML
         // path creates it through WindowBuilder, while the code path expects the host
@@ -352,12 +365,7 @@ void DuiHost::OnInit()
             // Some backends (Wayland) only honour a resize once the surface is mapped, so
             // re-apply the requested size here; without it the window keeps DUI's default
             // 800x600 and the host's layout ends up in a corner.
-            if (handle->width > 0 && handle->height > 0)
-            {
-                window->SetWindowSize(handle->width, handle->height);
-                window->InvalidateAll();
-                window->UpdateWindow();
-            }
+            ApplyClientSize(window, handle->width, handle->height);
         }
     }
 
@@ -681,12 +689,7 @@ void dui_shim_window_show(dui_shim_window* window, int32_t show)
             window->shown = true;
 
             // See OnInit: apply the requested size after the surface is mapped.
-            if (window->width > 0 && window->height > 0)
-            {
-                window->window->SetWindowSize(window->width, window->height);
-                window->window->InvalidateAll();
-                window->window->UpdateWindow();
-            }
+            ApplyClientSize(window->window, window->width, window->height);
         }
         else if (show == 0 && window->shown)
         {
@@ -739,7 +742,8 @@ void dui_shim_window_set_size(dui_shim_window* window, int32_t width_dip, int32_
     OnUiThread([window, width_dip, height_dip]() {
         if (window->window == nullptr)
             return;
-        window->window->SetWindowSize(width_dip, height_dip);
+        // The managed side passes device-independent pixels, same units as the layout.
+        ApplyClientSize(window->window, width_dip, height_dip);
     });
     DUI_SHIM_GUARD_END()
 }
