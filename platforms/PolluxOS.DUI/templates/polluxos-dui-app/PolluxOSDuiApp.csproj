@@ -1,15 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0-macos</TargetFramework>
-    <SupportedOSPlatformVersion>14.0</SupportedOSPlatformVersion>
+    <!-- Platform-neutral, like the backend: the same app runs on polluxos/FreeBSD, macOS
+         or Linux — only the native bridge (libdui_shim.*) is per-host. -->
+    <TargetFramework>net10.0</TargetFramework>
     <OutputType>Exe</OutputType>
-    <UseMaui>true</UseMaui>
     <RootNamespace>PolluxOSDuiApp</RootNamespace>
     <AssemblyName>PolluxOSDuiApp</AssemblyName>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <PolluxOSDuiNativeDir Condition="'$(PolluxOSDuiNativeDir)' == ''">$(MSBuildThisFileDirectory)artifacts/native/macos</PolluxOSDuiNativeDir>
+    <PolluxOSDuiNativeDir Condition="'$(PolluxOSDuiNativeDir)' == ''">$(MSBuildThisFileDirectory)artifacts/native</PolluxOSDuiNativeDir>
   </PropertyGroup>
 
   <ItemGroup>
@@ -18,9 +18,9 @@
   </ItemGroup>
 
   <ItemGroup Condition="Exists('$(PolluxOSDuiNativeDir)')">
-    <None Include="$(PolluxOSDuiNativeDir)/*.dylib"
-          CopyToOutputDirectory="PreserveNewest"
-          Link="%(Filename)%(Extension)" />
+    <None Include="$(PolluxOSDuiNativeDir)/*.so" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
+    <None Include="$(PolluxOSDuiNativeDir)/*.dylib" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
+    <None Include="$(PolluxOSDuiNativeDir)/*.dll" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

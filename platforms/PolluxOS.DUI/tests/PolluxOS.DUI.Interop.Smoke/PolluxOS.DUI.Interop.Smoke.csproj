@@ -12,7 +12,7 @@
     <IsPackable>false</IsPackable>
     <NoWarn>$(NoWarn);CA1416</NoWarn>
     <!-- The bridge is loaded by name; building without it is valid, running is not. -->
-    <PolluxOSDuiNativeDir Condition="'$(PolluxOSDuiNativeDir)' == ''">$(MSBuildThisFileDirectory)../../artifacts/native/macos</PolluxOSDuiNativeDir>
+    <PolluxOSDuiNativeDir Condition="'$(PolluxOSDuiNativeDir)' == ''">$(MSBuildThisFileDirectory)../../artifacts/native</PolluxOSDuiNativeDir>
   </PropertyGroup>
 
   <ItemGroup>

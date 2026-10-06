@@ -5,7 +5,7 @@
   "identity": "Microsoft.Maui.Platforms.PolluxOS.DUI.App",
   "name": ".NET MAUI App (PolluxOS.DUI)",
   "shortName": "maui-polluxos-dui",
-  "description": "A .NET MAUI app rendered with the DUI toolkit. macOS is the bring-up target.",
+  "description": "A .NET MAUI app rendered with the DUI toolkit. Runs on polluxos/FreeBSD (and other DUI hosts such as macOS and Linux).",
   "tags": {
     "language": "C#",
     "type": "project"

@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 using Microsoft.Maui.Dispatching;
+using Microsoft.Maui.Platforms.PolluxOS.DUI.Interop;
 
 namespace Microsoft.Maui.Platforms.PolluxOS.DUI.Platform;
 
@@ -24,6 +26,21 @@ public class DuiDispatcher : IDispatcher
 
     static DuiDispatcher? s_current;
     static nint s_idleCallbackPointer;
+    static DuiIdleCallback? s_idleCallback;
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    delegate void DuiIdleCallback(nint userData);
+
+    /// <summary>
+    /// Installs the pump: DUI invokes the idle handler on its own UI thread, which is
+    /// where queued work runs. Called by <c>UsePolluxOSDui()</c>; harmless twice.
+    /// </summary>
+    public static void Install()
+    {
+        s_idleCallback ??= _ => DrainQueue();
+        s_idleCallbackPointer = Marshal.GetFunctionPointerForDelegate(s_idleCallback);
+        DuiNative.dui_shim_set_idle_handler(s_idleCallbackPointer, 0);
+    }
 
     /// <summary>The process-wide dispatcher (one DUI instance per process).</summary>
     public static DuiDispatcher Current => s_current ??= new DuiDispatcher();

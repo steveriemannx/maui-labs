@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.20)
 # dui_shim — C ABI bridge between the DUI C++ toolkit and the managed
 # PolluxOS.DUI MAUI backend.
 #
-# Consumes an installed DUI tree (produced by scripts/build-dui-macos.sh):
+# Consumes an installed DUI tree (produced by scripts/build-dui.sh):
 #
 #   cmake -S native/dui_shim -B native/dui_shim/build \
 #         -DCMAKE_BUILD_TYPE=Release \
@@ -23,7 +23,7 @@ if(APPLE)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "" FORCE)
   endif()
   message(STATUS "dui_shim: macOS deployment target ${CMAKE_OSX_DEPLOYMENT_TARGET} "
-                 "(DUI must be built with the same target — scripts/build-dui-macos.sh pins it)")
+                 "(DUI must be built with the same target — scripts/build-dui.sh pins it)")
 endif()
 
 # DUI's exported target carries pkg-config imported targets on its link interface

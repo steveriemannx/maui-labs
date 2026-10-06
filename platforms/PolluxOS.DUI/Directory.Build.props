@@ -14,7 +14,7 @@
 
   <!--
     Location of the DUI toolkit source tree (https://github.com/rhett-lee/nim_duilib lineage).
-    The macOS bring-up work uses the local worktree, but any checkout works:
+    Any checkout works; the default is the local worktree used on the polluxos side:
 
       dotnet build ... -p:PolluxOSDuiRoot=/path/to/dui
 
@@ -23,8 +23,12 @@
   <PropertyGroup>
     <PolluxOSDuiRoot Condition="'$(PolluxOSDuiRoot)' == ''">$(MSBuildThisFileDirectory)../../../dui-dev-mac/.worktrees/worktree-dui-backend</PolluxOSDuiRoot>
     <PolluxOSDuiInstallDir Condition="'$(PolluxOSDuiInstallDir)' == ''">$(MSBuildThisFileDirectory)artifacts/dui-install</PolluxOSDuiInstallDir>
-    <!-- Directory that contains libdui_shim.dylib after scripts/build-native-macos.sh has run. -->
-    <PolluxOSDuiNativeDir Condition="'$(PolluxOSDuiNativeDir)' == ''">$(MSBuildThisFileDirectory)artifacts/native/macos</PolluxOSDuiNativeDir>
+    <!--
+      Native bridge directory. Platform-neutral on purpose: scripts/build-native.sh stages
+      libdui_shim.so on FreeBSD/polluxos and libdui_shim.dylib on macOS into this one
+      folder, which is what the sample, the C# smoke test and packaged consumers copy from.
+    -->
+    <PolluxOSDuiNativeDir Condition="'$(PolluxOSDuiNativeDir)' == ''">$(MSBuildThisFileDirectory)artifacts/native</PolluxOSDuiNativeDir>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(EnableMauiDevFlow)' == 'true'">

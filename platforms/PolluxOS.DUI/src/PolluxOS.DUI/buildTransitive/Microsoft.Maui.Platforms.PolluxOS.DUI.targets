@@ -3,18 +3,20 @@
   <!--
     Ships with the PolluxOS.DUI backend package.
 
-    Managed assemblies always ship in the package; the native bridge
-    (libdui_shim.dylib + the DUI dylibs it links) is built per-RID by
-    scripts/build-dui-macos.sh + scripts/build-native-macos.sh and staged next to
-    the assemblies by the consuming app.
+    The managed assemblies are platform-neutral; the native bridge is not. It is built
+    per host by scripts/build-dui.sh + scripts/build-native.sh, which stage the result in
+    one platform-neutral folder (<product>/artifacts/native by default):
 
-    Point the app at the staged directory to have the files copied to the output:
+      FreeBSD/polluxos  libdui_shim.so   (DUI Wayland backend, bmake)
+      macOS             libdui_shim.dylib (DUI AppKit backend)
+      Linux/Windows     libdui_shim.so / .dll as DUI's X11/Wayland/Win32 backends build
 
-      dotnet build -p:PolluxOSDuiNativeDir=/path/to/artifacts/native/macos
+    Point the app at a staged directory to have the files copied to its output:
 
-    Nothing here fails the build when the native library is absent: a managed
-    build without the bridge is valid (the bridge is needed to run, not to
-    compile).
+      dotnet build -p:PolluxOSDuiNativeDir=/path/to/artifacts/native
+
+    Nothing here fails the build when the native library is absent: a managed build
+    without the bridge is valid (the bridge is needed to run, not to compile).
   -->
   <PropertyGroup>
     <PolluxOSDuiNativeDir Condition="'$(PolluxOSDuiNativeDir)' == ''"></PolluxOSDuiNativeDir>
@@ -22,7 +24,15 @@
   </PropertyGroup>
 
   <ItemGroup Condition="'$(PolluxOSDuiCopyNative)' == 'true' and '$(PolluxOSDuiNativeDir)' != '' and Exists('$(PolluxOSDuiNativeDir)')">
+    <None Include="$(PolluxOSDuiNativeDir)/*.so"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
+          Link="%(Filename)%(Extension)" />
     <None Include="$(PolluxOSDuiNativeDir)/*.dylib"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
+          Link="%(Filename)%(Extension)" />
+    <None Include="$(PolluxOSDuiNativeDir)/*.dll"
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest"
           Link="%(Filename)%(Extension)" />

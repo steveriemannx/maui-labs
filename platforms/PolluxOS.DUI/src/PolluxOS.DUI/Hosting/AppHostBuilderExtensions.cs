@@ -15,7 +15,7 @@ namespace Microsoft.Maui.Platforms.PolluxOS.DUI.Hosting;
 /// Entry point for apps that render through the DUI toolkit.
 /// </summary>
 /// <remarks>
-/// Usage (macOS bring-up):
+/// Usage (host bootstraps the toolkit, then hands the thread to DUI):
 /// <code>
 /// DuiRuntime.Startup(resourceRoot);
 /// var app = MauiProgram.CreateMauiApp();      // builder.UsePolluxOSDui&lt;App&gt;()
@@ -43,7 +43,7 @@ public static partial class AppHostBuilderExtensions
         // Give MAUI a UI thread: DUI's idle callback drains the dispatcher queue on the
         // toolkit's own thread (this is the piece that makes the backend work on hosts
         // where no platform dispatcher exists, e.g. FreeBSD/polluxos).
-        DuiRuntime.UseDispatcher();
+        DuiDispatcher.Install();
 
         builder.Services.AddScoped(svc =>
         {

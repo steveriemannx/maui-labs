@@ -23,7 +23,7 @@
   </ItemGroup>
 
     <PropertyGroup>
-    <PolluxOSDuiNativeDir Condition="'$(PolluxOSDuiNativeDir)' == ''">$(MSBuildThisFileDirectory)../../artifacts/native/macos</PolluxOSDuiNativeDir>
+    <PolluxOSDuiNativeDir Condition="'$(PolluxOSDuiNativeDir)' == ''">$(MSBuildThisFileDirectory)../../artifacts/native</PolluxOSDuiNativeDir>
   </PropertyGroup>
 
   <ItemGroup Condition="Exists('$(PolluxOSDuiNativeDir)')">

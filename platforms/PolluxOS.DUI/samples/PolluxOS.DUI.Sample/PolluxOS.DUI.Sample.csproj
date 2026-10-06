@@ -36,10 +36,10 @@
     <Compile Include="../../src/PolluxOS.DUI.Essentials/**/*.cs" LinkBase="PolluxOS.DUI.Essentials" />
   </ItemGroup>
 
-  <!-- Native bridge: staged by scripts/build-native-macos.sh (macOS) or built in-tree
-       on FreeBSD/polluxos (libdui_shim.so). -->
+  <!-- Native bridge: staged by scripts/build-native.sh for the host platform
+       on FreeBSD/polluxos and macOS. -->
   <PropertyGroup>
-    <PolluxOSDuiNativeDir Condition="'$(PolluxOSDuiNativeDir)' == ''">$(MSBuildThisFileDirectory)../../artifacts/native/macos</PolluxOSDuiNativeDir>
+    <PolluxOSDuiNativeDir Condition="'$(PolluxOSDuiNativeDir)' == ''">$(MSBuildThisFileDirectory)../../artifacts/native</PolluxOSDuiNativeDir>
     <PolluxOSDuiResourcesDir Condition="'$(PolluxOSDuiResourcesDir)' == '' and Exists('$(PolluxOSDuiInstallDir)/share/dui/resources')">$(PolluxOSDuiInstallDir)/share/dui/resources</PolluxOSDuiResourcesDir>
     <PolluxOSDuiResourcesDir Condition="'$(PolluxOSDuiResourcesDir)' == ''">$(PolluxOSDuiRoot)/resources</PolluxOSDuiResourcesDir>
   </PropertyGroup>

@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using Microsoft.Maui.Platforms.PolluxOS.DUI.Platform;
 
 namespace Microsoft.Maui.Platforms.PolluxOS.DUI.Interop;
 
@@ -8,30 +7,14 @@ namespace Microsoft.Maui.Platforms.PolluxOS.DUI.Interop;
 /// the bridge version. One DUI instance per process.
 /// </summary>
 /// <remarks>
-/// DUI is single-threaded and its loop owns the UI. <see cref="Run"/> must be
-/// called on the main thread (on macOS it also pre-warms the NSApplication run
-/// loop) and blocks until the last window closes.
+/// DUI is single-threaded and its loop owns the UI. <see cref="Run"/> must be called on
+/// the thread that should own the UI and blocks until the last window closes; the
+/// dispatcher pump is installed by the backend (<c>UsePolluxOSDui()</c>) rather than here,
+/// so this type stays free of MAUI dependencies.
 /// </remarks>
 public static class DuiRuntime
 {
     static bool s_started;
-    static DuiIdleCallback? s_idleCallback;
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    delegate void DuiIdleCallback(nint userData);
-
-    /// <summary>
-    /// Installs the dispatcher pump: DUI invokes the idle handler on its own UI
-    /// thread, and that is where queued <see cref="DuiDispatcher"/> work runs. Called
-    /// by <c>UsePolluxOSDui()</c>; harmless to call twice.
-    /// </summary>
-    public static void UseDispatcher()
-    {
-        s_idleCallback ??= _ => DuiDispatcher.DrainQueue();
-        DuiNative.dui_shim_set_idle_handler(
-            Marshal.GetFunctionPointerForDelegate(s_idleCallback),
-            0);
-    }
 
     /// <summary>Bridge version reported by the shim (not the DUI project version).</summary>
     public static string Version => DuiNative.Version();

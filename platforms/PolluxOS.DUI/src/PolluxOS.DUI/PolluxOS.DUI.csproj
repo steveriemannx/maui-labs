@@ -12,7 +12,7 @@
     <AssemblyName>Microsoft.Maui.Platforms.PolluxOS.DUI</AssemblyName>
     <PackageId>Microsoft.Maui.Platforms.PolluxOS.DUI</PackageId>
     <Version>$(PlatformMauiPolluxOSDuiVersion)</Version>
-    <Description>A .NET MAUI backend that renders through the DUI toolkit (XML-driven layout + Skia). Develop and test on macOS first — DUI is cross-platform.</Description>
+    <Description>A .NET MAUI backend that renders through the DUI toolkit (XML-driven layout + Skia). Platform-neutral, so the same assemblies run on polluxos/FreeBSD, macOS and Linux — only the native bridge is per-host.</Description>
     <PackageTags>maui;polluxos;dui;skia;desktop;dotnet;cross-platform</PackageTags>
     <IsPackable>true</IsPackable>
     <IsShipping>true</IsShipping>

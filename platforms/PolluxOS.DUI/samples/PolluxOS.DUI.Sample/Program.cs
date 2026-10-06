@@ -105,5 +105,5 @@ static string ResolveResourceRoot(string[] args)
         return metadata;
 
     throw new InvalidOperationException(
-        "DUI resource directory not found. Build DUI first (scripts/build-dui-macos.sh) or set POLLUXOS_DUI_RESOURCES.");
+        "DUI resource directory not found. Build DUI first (scripts/build-dui.sh) or set POLLUXOS_DUI_RESOURCES.");
 }

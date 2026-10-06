@@ -5,178 +5,188 @@ cross-platform C++ toolkit (`dui`, the English port of
 [nim_duilib](https://github.com/rhett-lee/nim_duilib)) that describes UI in XML and
 draws it with Skia.
 
-> **Status: scaffold / bring-up.** The native bridge, managed backend, sample,
-> template, tests and CI wiring are in place.
->
-> * **Native half: built and linked (verified on macOS 26 / arm64, dui 0.1.0).**
->   `libdui_shim.dylib` compiles against the DUI headers and links DUI's static
->   archives; it exports exactly the 29 `dui_shim_*` entry points and depends only
->   on system frameworks/libraries (AppKit, Foundation, Cocoa, Metal, QuartzCore,
->   OpenGL, CoreGraphics, CoreText, libz, libc++) — no Homebrew, no X11.
-> * **Managed half: not compiled yet** — the repository pins an SDK
->   (`global.json`) that is not installed everywhere, so the C# side has not been
->   through a compiler in this checkout.
-> * **Handler set is a starting subset** (Application, Window,
->   ContentPage/ContentView, Layout, Label, Button).
+The backend is **platform-neutral** (`net10.0`), not tied to a platform SDK TFM: DUI
+supplies the windowing and rendering, and a small native bridge supplies the C ABI. The
+primary target is **polluxos/FreeBSD**, where no MAUI head exists — macOS already has the
+AppKit backend in [`platforms/MacOS`](../MacOS/), so running this one there is only a
+convenience for development.
 
-## Why macOS first
+## Status
 
-DUI already runs on Windows, Linux (X11 + Wayland), macOS and FreeBSD, and its
-macOS/Cocoa backend is its most developed one (56 of its commits touch macOS files
-vs 28 Windows, 18 Wayland, 14 X11; its own `Progress.md` names macOS the current
-verification platform). So macOS is where the bridge can be built and exercised
-today without waiting for a PolluxOS toolchain. A PolluxOS target framework is
-added once that platform has a .NET runtime/TFM to compile against.
+| Layer | State |
+|---|---|
+| Native bridge (`libdui_shim.so` / `.dylib`) | ✅ builds and links on **FreeBSD 15 / Wayland** (bmake, CMake 4) and **macOS 26 / arm64**; 31 exported `dui_shim_*` entries; on macOS it links system frameworks only |
+| C interop smoke (`native/dui_shim/tests/abi_smoke.c`) | ✅ SMOKE OK on both (window, Label + Button, tree dump, clean shutdown) |
+| C# interop layer (`tests/PolluxOS.DUI.Interop.Smoke`) | ✅ SMOKE OK on both, including a DUI click reaching a managed callback |
+| MAUI backend + host (`samples/PolluxOS.DUI.Sample`) | ✅ the **MAUI app runs on polluxos/FreeBSD** and its page is realized as DUI controls (verified with a desktop screenshot + widget-tree dump) |
+| Layout fidelity | ⚠️ MAUI's cross-platform layout is not bridged into the DUI container yet, so children currently share one rectangle — see *Known gaps* |
+| Handler coverage | ⚠️ Application, Window, ContentPage/ContentView, Layout, Label, Button |
+
+## Platform support
+
+| Host | DUI backend | Notes |
+|---|---|---|
+| polluxos / FreeBSD 15 | Windowing: Wayland (bmake) | Primary target. Needs CMake 4+, a user-local .NET 10 SDK, `wayland-client/egl/cursor`, `xkbcommon`, `epoll-shim` |
+| macOS 26 / arm64 | Windowing: AppKit | Development convenience; the AppKit backend is the "native" macOS story |
+| Linux / Windows | X11/Wayland, Win32 | DUI supports them; the bridge compiles per platform, untested here |
+
+The managed side has no platform TFM, so the same assemblies run everywhere; only the
+native bridge is per-host.
 
 ## Architecture
 
 ```
-MAUI app  (net10.0-macos)
+MAUI app  (net10.0, Microsoft.Maui.Controls(.Core) from NuGet)
    │  handlers / mappers
    ▼
 Microsoft.Maui.Platforms.PolluxOS.DUI          (C#)
    │  P/Invoke over a stable C ABI (LibraryImport, UTF-8, opaque handles)
    ▼
-libdui_shim.dylib                              native/dui_shim   (C++20)
-   │  try/catch firewall; marshals to the DUI UI thread
+libdui_shim.(so|dylib)                         native/dui_shim   (C++20)
+   │  try/catch firewall; UI-thread command queue; idle callback
    ▼
 DUI: ui::GlobalManager / ui::WindowImplBase / ui::Control   (C++20, static)
    ▼
-Skia (CPU / OpenGL / Metal)
+Skia (CPU raster / OpenGL / Metal)
 ```
 
 `dui_shim` is not optional plumbing — it is the only way in:
 
-* DUI has **no C API**: zero `extern "C"` in `include/` and `src/`.
-* DUI only ever produces **static archives** (`BUILD_SHARED_LIBS` is never set;
-  `libdui.a` + `libdui_entry.a` + vendored archives), with `DUI_API` empty on
-  macOS/Linux and `-fvisibility=hidden` in the build. There is no shared object to
-  load, and none would export symbols. Hence: our dylib links DUI's archives, which
-  is why DUI must be configured with `CMAKE_POSITION_INDEPENDENT_CODE=ON`.
-
-The shim also absorbs DUI's sharper edges:
-
-| DUI behaviour | How the bridge handles it |
-|---|---|
-| Throws C++ exceptions (`std::runtime_error`, `std::bad_alloc`, …) | every entry point is a `try/catch(...)` firewall; errors surface via `dui_shim_last_error()` |
-| Single-threaded; `AssertUIThread()` compiles out in Release | calls are queued and drained in `FrameworkThread::OnMessageLoopIdle()` on the UI thread |
-| Windows and controls **self-delete** (`Window::OnFinalMessage`, `RequestDeleteControl`) | the shim closes/removes, never `delete`s toolkit objects |
-| No control-tree serializer, no `GetAttribute` | the shim walks `Box::GetItemCount/GetItemAt` + `GetType/GetName/GetPos` and emits XML |
-| `GetText`/`SetText` are not on `Control` (they live on `LabelOwner`) | text is set through the universal `SetAttribute("text", …)` |
-| macOS needs the AppKit run loop to exist before the first window | `dui_shim_run()` pre-warms with `CFRunLoopRunInMode` (like DUI's own `AppEntry.h`) |
+* DUI has **no C API** (zero `extern "C"` in `include/`/`src/`) and only ever produces
+  **static archives** with `-fvisibility=hidden`, so there is no shared object to load:
+  the bridge links DUI's archives and is the loadable artifact. DUI must therefore be
+  built with `CMAKE_POSITION_INDEPENDENT_CODE=ON`.
+* DUI is single-threaded with assert-only thread checks → every call is queued and
+  drained on DUI's UI thread. `dui_shim_set_idle_handler` also lets managed code run
+  *on* that thread, which is what gives MAUI a real dispatcher on hosts that have none
+  (this is the piece that makes polluxos work).
+* Windows and controls self-delete (`Window::OnFinalMessage`, `RequestDeleteControl`);
+  the shim closes/removes and never `delete`s toolkit objects.
+* DUI has no control-tree serializer, so the tree dump (used for automation/evidence)
+  is built in the shim from `Box::GetItemCount/GetItemAt` + `GetType/GetName/GetPos`,
+  with text read through the `LabelOwner` interface.
+* Containers own their children's rectangles: absolute placement uses duilib's
+  `float` + fixed size + **margin** (`Layout::GetFloatPos`), and code-built windows get
+  a root container attached by the bridge (`Window::AttachBox`).
+* `Window::CreateControl` is a virtual hook that returns `nullptr` in the base, so the
+  bridge instantiates concrete types itself from the `DUI_CTR_*` names.
+* DUI's installed CMake package references `PkgConfig::WAYLAND_*`/`X11`/`EGL`/`GLESV2`
+  without creating them; the bridge recreates whichever the host provides (upstream
+  packaging gap).
 
 ## Repository layout
 
 ```
 platforms/PolluxOS.DUI/
-├── Directory.Build.props            # MIT package metadata + DUI path properties
-├── LICENSE                          # MIT
-├── PolluxOS.DUI.slnx
-├── native/dui_shim/                 # C ABI bridge (header + implementation + CMake)
+├── Directory.Build.props            # MIT package metadata + DUI paths (platform-neutral)
+├── LICENSE / PolluxOS.DUI.slnx / README.md
+├── native/dui_shim/                 # C ABI bridge: header + implementation + CMake + tests
 ├── scripts/
-│   ├── build-dui-macos.sh           # build + install DUI (Ninja, PIC, no examples)
-│   └── build-native-macos.sh        # build libdui_shim.dylib against that install
-├── src/PolluxOS.DUI/                # handlers, hosting, interop  → NuGet package
-├── src/PolluxOS.DUI.Essentials/     # Preferences (+ defaults for the rest)
-├── samples/PolluxOS.DUI.Sample/     # runnable bring-up host
-├── templates/polluxos-dui-app/      # dotnet new maui-polluxos-dui
-└── tests/PolluxOS.DUI.Tests/        # parent-stack contract + bridge smoke tests
+│   ├── build-dui.sh                 # build + install DUI for the host OS (bmake/Ninja, PIC)
+│   └── build-native.sh              # build the bridge, stage it in artifacts/native
+├── src/PolluxOS.DUI/                # handlers, hosting, interop, dispatcher → NuGet package
+├── src/PolluxOS.DUI.Essentials/     # Preferences (+ MAUI defaults for the rest)
+├── samples/PolluxOS.DUI.Sample/     # MAUI-on-DUI host (standalone SDK project)
+├── tests/PolluxOS.DUI.Interop.Smoke/# C# interop end-to-end smoke (no MAUI dependency)
+├── tests/PolluxOS.DUI.Tests/        # unit tests (parent-stack contract, bridge presence)
+└── templates/polluxos-dui-app/      # dotnet new maui-polluxos-dui
 ```
 
-## Build and run (macOS)
+The sample, the C# smoke test and the template are **standalone SDK projects** (own
+shadowed `Directory.Build.props/targets/packages` + `NuGet.config`): they build with a
+bare .NET SDK and nuget.org, which is what lets them run on the polluxos box (user-local
+SDK, no Arcade, no reachable internal feeds). The shipping `src/` projects keep the
+repository's conventions.
 
-Prerequisites: .NET SDK pinned by `global.json`, the `maui` workload, CMake **4.0+**
-(DUI requires it), and Ninja. DUI's configure step downloads Skia (~70 MB) into its
-own `third_party/` and builds it from source with gn+ninja — budget ~12+ minutes on
-the first run.
+## Build and run — polluxos / FreeBSD (primary)
+
+Prerequisites: CMake 4+ (`pkg` has 3.31; the polluxos box keeps 4.x as `cmake4`), bmake,
+a .NET 10 SDK (user-local is fine, e.g. `~/dotnet10`), and DUI's Wayland dependencies.
 
 ```bash
-# 1. DUI itself (source tree in, install prefix out)
-platforms/PolluxOS.DUI/scripts/build-dui-macos.sh \
-  /path/to/dui                      # defaults to the local worktree
+D=~/dotnet10/dotnet
+P=~/projects-main/maui-labs/platforms/PolluxOS.DUI
 
-# 2. The bridge → platforms/PolluxOS.DUI/artifacts/native/macos/libdui_shim.dylib
-platforms/PolluxOS.DUI/scripts/build-native-macos.sh
+# 1. DUI itself (Wayland backend, bmake). ~12 min the first time (Skia from source);
+#    pass POLLUXOS_DUI_PREBUILT_SKIA=<other-build>/lib/release to reuse a Skia tree.
+platforms/PolluxOS.DUI/scripts/build-dui.sh /path/to/dui
 
-# 3. Managed backend + tests + template
-dotnet build platforms/PolluxOS.DUI/PolluxOS.DUI.slnx
+# 2. The bridge → platforms/PolluxOS.DUI/artifacts/native/libdui_shim.so
+platforms/PolluxOS.DUI/scripts/build-native.sh
 
-# 4. Run the sample (DUI needs its resources/ directory at runtime)
-POLLUXOS_DUI_RESOURCES=<dui-install>/share/dui/resources \
-  dotnet run --project platforms/PolluxOS.DUI/samples/PolluxOS.DUI.Sample
+# 3. Run a MAUI app on the DUI backend
+$D build $P/samples/PolluxOS.DUI.Sample/PolluxOS.DUI.Sample.csproj -c Release
+cd $P/samples/PolluxOS.DUI.Sample/bin/Release/net10.0
+XDG_RUNTIME_DIR=/var/run/xdg/$USER WAYLAND_DISPLAY=wayland-0 \
+  $D PolluxOS.DUI.Sample.dll <dui-install>/share/dui/resources 5
+#   the optional trailing number = seconds after which the host dumps the widget tree,
+#   captures, and closes itself (used for remote/headless runs)
 ```
 
-Path properties (all overridable, defaults live in `Directory.Build.props`):
-`PolluxOSDuiRoot`, `PolluxOSDuiInstallDir`, `PolluxOSDuiNativeDir`,
-`PolluxOSDuiResourcesDir`.
+`scripts/build-dui.sh` detects the host: FreeBSD → `Unix Makefiles` + bmake + Wayland;
+macOS → Ninja + AppKit with `CMAKE_OSX_DEPLOYMENT_TARGET=14.0`; Linux → Ninja + Wayland.
+`scripts/build-native.sh` stages `libdui_shim.*` into `artifacts/native` (override with
+`POLLUXOS_DUI_NATIVE_DIR`); managed projects pick it up automatically
+(`-p:PolluxOSDuiNativeDir=…`).
 
-A managed build deliberately succeeds **without** the native library — the bridge is
-needed to run, not to compile. `dotnet build` with `-p:PolluxOSDuiNativeDir=…` copies
-the staged dylibs to the output.
+macOS uses the same commands (DUI install prefix differs only in that it has no
+`share/dui/resources` unless you install one).
 
-## Handler coverage
+## Verification
 
-| MAUI | DUI | State |
-|---|---|---|
-| `IApplication` | windows collection + theme hint | Open/CloseWindow scaffolded; runtime theming not wired |
-| `IWindow` | `WindowImplBase` | create/show/close/title/size |
-| `ContentPage`, `ContentView` | `Box` | content realized inside the container |
-| `Layout` (StackLayout/Grid/…) | `Box` | Add/Remove/Clear; insert ordering is append-only |
-| `Label` | `Label` control | text, colour, font size/family, alignment |
-| `Button` | `Button` control | text, colour, padding, click → `IButton.SendClicked()` |
-| everything else | — | not implemented yet |
+Remote (polluxos, FreeBSD 15 / Wayland) evidence:
 
-Layout is bridged by writing MAUI's arranged rectangle into the DUI control
-(`SetPos` + width/height attributes). Measurement is **not** bridged yet: DUI sizes
-controls in its own layout pass, so `dui_shim_widget_measure` reports
-"unavailable" and MAUI's explicit sizes win, with a per-control default as fallback.
+* `grim` desktop capture showing the DUI window with `hello from dui_shim` / `Click me`
+  laid out where the code asked, then the **MAUI** app window (`PolluxOS.DUI Sample`)
+  with its page text.
+* Widget-tree dump from the running MAUI app:
+  `window → ShadowBox → Box(maui-root) → Box(ContentPage) → Box(ContentView) →
+  Label(TitleLabel) + Label(CounterLabel) + Button(CounterButton)` — `AutomationId`
+  becomes the DUI control name, which is what a DevFlow-style agent would query.
 
-## Licensing
-
-The backend, the shim and the sample are **MIT** (`PackageLicenseExpression=MIT`,
-root `LICENSE`). DUI is **MIT** (`Copyright (c) 2023 rhett-lee`) and is consumed as a
-source build, so nothing of it is redistributed here.
-
-Two things to keep in mind when packaging:
-
-* DUI's vendored libraries are permissive (Skia BSD-3-Clause, libpng, zlib, libwebp,
-  libjpeg-turbo, giflib, stb_image, nanosvg, pugixml, udis86, libcef, WebView2 SDK,
-  ConvertUTF).
-* **`third_party/libpag` is GPL/LGPL** (lz4 GPL-2.0 for programs/tests/examples,
-  ffavc + FFmpeg LGPL-2.1, Qt components LGPL-3.0). It is Windows-only, disabled by
-  default and referenced by no DUI CMake target, so a default build never links it —
-  do not enable it without legal review. See `THIRD-PARTY-NOTICES.txt`.
+Local (macOS): the same C, C# and MAUI hosts build and run; DUI's own
+`ScreenCapture::CaptureBitmap` returns null on macOS, so captures there need
+`screencapture` (which requires the Screen Recording permission).
 
 ## Known gaps / next steps
 
-1. **Bridge measurement** is the one remaining stub: DUI measures inside its own
-   layout pass and exposes no "measure this control for WxH" call, so
-   `dui_shim_widget_measure` reports unavailable and MAUI's explicit sizes win.
-2. **Keep the deployment targets in step.** DUI's archives and the shim must be
-   built with the same `CMAKE_OSX_DEPLOYMENT_TARGET` (the scripts default to 14.0);
-   otherwise the link reports min-OS mismatches. DUI's Skia gn args do not pin
-   `mac_deployment_target` — worth fixing upstream.
-3. **Parenting on XML windows.** `Window::GetRoot()` is used for code-built windows;
-   XML windows (`InitSkin`) additionally need `Window::AttachBox`/`GetXmlRoot`.
-4. **Wider handler coverage** — the checklist in
+1. **Bridge MAUI's cross-platform layout into DUI.** The layout container should
+   implement `ICrossPlatformLayout` (`CrossPlatformMeasure` / `CrossPlatformArrange`
+   forwarding to the virtual view, as the Avalonia MAUI backend's layout panel does) so
+   every child handler receives a real rectangle. Today children of a layout share one
+   rect, which is why the screenshot shows overlapping text.
+2. Wider handler coverage — see
    [`../references/PLATFORM_BACKEND_IMPLEMENTATION.md`](../references/PLATFORM_BACKEND_IMPLEMENTATION.md)
-   is the authoritative list (23 areas; the AppKit backend is ~131 files for
-   comparison).
-5. **Essentials** beyond `Preferences`, and a `BlazorWebView` story (DUI has
-   CEF/WebView2 integration, both off by default).
-6. **Automation/DevFlow**: the shim already exposes a tree dump; DUI also has
-   `ScreenCapture::CaptureBitmap` for screenshots, `Window::FindControl` for lookup
-   and `Control::AttachClick`/`SetAttribute` for input — the raw material for a
-   DevFlow-style agent on this backend.
+   (23 areas; the AppKit backend is ~131 files for comparison).
+3. Essentials beyond `Preferences`, and a `BlazorWebView` story (DUI has CEF/WebView2
+   integration, both off by default).
+4. DevFlow-style automation: the bridge already exposes tree dump, control lookup,
+   click injection and `ScreenCapture`; a capture path that works on macOS is missing.
+5. Runtime theme switching: DUI selects its theme (there is a `polluxos` theme next to
+   `windows11`/`macos26`/…) from the resource root at startup and exposes no runtime
+   switch.
+
+## Licensing
+
+The backend, the bridge and the samples are **MIT** (`PackageLicenseExpression=MIT`,
+[LICENSE](LICENSE)). DUI is **MIT** (`Copyright (c) 2023 rhett-lee`) and is consumed as a
+source build, so nothing of it is redistributed here.
+
+DUI's vendored libraries are permissive (Skia BSD-3-Clause, libpng, zlib, libwebp,
+libjpeg-turbo, giflib, stb_image, nanosvg, pugixml, udis86, libcef, WebView2 SDK,
+ConvertUTF). The one exception is **`third_party/libpag`** (lz4 GPL-2.0 for
+programs/tests/examples, ffavc + FFmpeg LGPL-2.1, Qt components LGPL-3.0): Windows-only,
+disabled by default and referenced by no DUI CMake target, so a default build never links
+it — do not enable it without legal review. See `THIRD-PARTY-NOTICES.txt`.
 
 ## Tests and CI
 
-`tests/PolluxOS.DUI.Tests` covers the managed parent-stack contract (no native
-library needed) plus bridge smoke tests that report the missing prerequisite instead
-of failing when `libdui_shim.dylib` is absent.
-
-`.github/workflows/ci-polluxos-dui.yml` builds and tests the managed solution on
-macOS and runs a cheap contract check that every `dui_shim_*` entry point exists in
-both `native/dui_shim/include/dui_shim.h` and `Interop/DuiNative.cs` — the two files
-must move together. The native build is intentionally not part of every PR: it needs
-CMake 4.0+, a Skia build from source, and a DUI checkout.
+* `native/dui_shim/tests/abi_smoke.c` → the `dui_shim_abi_smoke` target: headless checks
+  plus a real window run (tree dump verification, capture, clean shutdown).
+* `tests/PolluxOS.DUI.Interop.Smoke`: the same flow through the shipping C# interop code.
+* `tests/PolluxOS.DUI.Tests`: parent-stack contract + bridge-presence smoke tests.
+* `.github/workflows/ci-polluxos-dui.yml`: managed build/tests on macOS plus a cheap
+  contract check that every `dui_shim_*` entry point exists in both
+  `native/dui_shim/include/dui_shim.h` and `Interop/DuiNative.cs` (they must move
+  together). The native build is not part of every PR: it needs CMake 4+, a DUI checkout
+  and a Skia build.
